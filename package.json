@@ -1,0 +1,51 @@
+{
+  "name": "wasrtk",
+  "version": "1.0.0",
+  "description": "A powerful pixel art and animation tool for rotoscoping and traditional animation",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "pixel-art",
+    "animation",
+    "rotoscoping",
+    "drawing",
+    "electron"
+  ],
+  "author": "WASRTK",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "electron": "^13.1.7",
+    "electron-builder": "^22.11.7"
+  },
+  "dependencies": {
+    "gif.js": "^0.2.0"
+  },
+  "build": {
+    "appId": "com.wasrtk.app",
+    "productName": "WASRTK",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "!dist/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.graphics-design"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+} 

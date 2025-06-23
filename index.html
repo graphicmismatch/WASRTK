@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WASRTK</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-palette"></i>
+                <span>WASRTK</span>
+            </div>
+            <div class="header-controls">
+                <button id="undoBtn" class="btn btn-secondary" title="Undo (Ctrl+Z)" disabled>
+                    <i class="fas fa-undo"></i>
+                </button>
+                <button id="redoBtn" class="btn btn-secondary" title="Redo (Ctrl+Y)" disabled>
+                    <i class="fas fa-redo"></i>
+                </button>
+                <button id="playPauseBtn" class="btn btn-primary" title="Play/Pause Animation (Space)">
+                    <i class="fas fa-play"></i>
+                </button>
+                <div class="fps-control">
+                    <label for="fpsSlider">FPS:</label>
+                    <input type="range" id="fpsSlider" min="1" max="60" value="12" class="slider">
+                    <span id="fpsValue">12</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel - Tools -->
+            <div class="left-panel">
+                <div class="panel-section">
+                    <h3>Tools</h3>
+                    <div class="tool-grid">
+                        <button class="tool-btn active" data-tool="pen" title="Pen Tool (1)">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="line" title="Line Tool (2)">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="rectangle" title="Rectangle Tool (3)">
+                            <i class="fas fa-square"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="circle" title="Circle Tool (4)">
+                            <i class="fas fa-circle"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="fill" title="Fill Tool (5)">
+                            <i class="fas fa-fill-drip"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="eraser" title="Eraser Tool (6)">
+                            <i class="fas fa-eraser"></i>
+                        </button>
+                    </div>
+                    <div id="fillToleranceSection" class="panel-section" style="display: none;">
+                        <label for="fillToleranceSlider">Tolerance:</label>
+                        <input type="range" id="fillToleranceSlider" min="0" max="255" value="0" class="slider">
+                        <span id="fillToleranceValue">0</span>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Brush Size</h3>
+                    <div class="brush-preview">
+                        <canvas id="brushPreview" width="50" height="50"></canvas>
+                    </div>
+                    <input type="range" id="brushSizeSlider" min="1" max="50" value="1" class="slider">
+                    <span id="brushSizeValue">1px</span>
+                    <div class="antialiasing-control">
+                        <label>
+                            <input type="checkbox" id="antialiasingEnabled" checked title="Enable smooth drawing with antialiasing. When disabled, drawing is pixel-perfect.">
+                            Enable Antialiasing
+                        </label>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Colors</h3>
+                    <div class="color-picker">
+                        <input type="color" id="colorPicker" value="#000000">
+                        <div class="opacity-control">
+                            <label for="opacitySlider">Opacity:</label>
+                            <input type="range" id="opacitySlider" min="0" max="100" value="100" class="slider">
+                            <span id="opacityValue">100%</span>
+                        </div>
+                        <div class="color-presets">
+                            <div class="color-preset" style="background: #3b1725" data-color="#3b1725"></div>
+                            <div class="color-preset" style="background: #73172d" data-color="#73172d"></div>
+                            <div class="color-preset" style="background: #b4202a" data-color="#b4202a"></div>
+                            <div class="color-preset" style="background: #df3e23" data-color="#df3e23"></div>
+                            <div class="color-preset" style="background: #e86a73" data-color="#e86a73"></div>
+                            <div class="color-preset" style="background: #fa6a0a" data-color="#fa6a0a"></div>
+                            <div class="color-preset" style="background: #f5a097" data-color="#f5a097"></div>
+                            <div class="color-preset" style="background: #fad6b8" data-color="#fad6b8"></div>
+                            <div class="color-preset" style="background: #fef3c0" data-color="#fef3c0"></div>
+                            <div class="color-preset" style="background: #ffd541" data-color="#ffd541"></div>
+                            <div class="color-preset" style="background: #fffc40" data-color="#fffc40"></div>
+                            <div class="color-preset" style="background: #fa6a0a" data-color="#fa6a0a"></div>
+                            <div class="color-preset" style="background: #f9a31b" data-color="#f9a31b"></div>
+                            <div class="color-preset" style="background: #df3e23" data-color="#df3e23"></div>
+                            <div class="color-preset" style="background: #b4202a" data-color="#b4202a"></div>
+                            <div class="color-preset" style="background: #73172d" data-color="#73172d"></div>
+                            <div class="color-preset" style="background: #3b1725" data-color="#3b1725"></div>
+                            <div class="color-preset" style="background: #d6f264" data-color="#d6f264"></div>
+                            <div class="color-preset" style="background: #9cdb43" data-color="#9cdb43"></div>
+                            <div class="color-preset" style="background: #59c135" data-color="#59c135"></div>
+                            <div class="color-preset" style="background: #14a02e" data-color="#14a02e"></div>
+                            <div class="color-preset" style="background: #1a7a3e" data-color="#1a7a3e"></div>
+                            <div class="color-preset" style="background: #24523b" data-color="#24523b"></div>
+                            <div class="color-preset" style="background: #23674e" data-color="#23674e"></div>
+                            <div class="color-preset" style="background: #328464" data-color="#328464"></div>
+                            <div class="color-preset" style="background: #5daf8d" data-color="#5daf8d"></div>
+                            <div class="color-preset" style="background: #92dcba" data-color="#92dcba"></div>
+                            <div class="color-preset" style="background: #cdf7e2" data-color="#cdf7e2"></div>
+                            <div class="color-preset" style="background: #a6fcdb" data-color="#a6fcdb"></div>
+                            <div class="color-preset" style="background: #143464" data-color="#143464"></div>
+                            <div class="color-preset" style="background: #285cc4" data-color="#285cc4"></div>
+                            <div class="color-preset" style="background: #249fde" data-color="#249fde"></div>
+                            <div class="color-preset" style="background: #20d6c7" data-color="#20d6c7"></div>
+                            <div class="color-preset" style="background: #b9bffb" data-color="#b9bffb"></div>
+                            <div class="color-preset" style="background: #849be4" data-color="#849be4"></div>
+                            <div class="color-preset" style="background: #588dbe" data-color="#588dbe"></div>
+                            <div class="color-preset" style="background: #477d85" data-color="#477d85"></div>
+                            <div class="color-preset" style="background: #e3e6ff" data-color="#e3e6ff"></div>
+                            <div class="color-preset" style="background: #dae0ea" data-color="#dae0ea"></div>
+                            <div class="color-preset" style="background: #b3b9d1" data-color="#b3b9d1"></div>
+                            <div class="color-preset" style="background: #8b93af" data-color="#8b93af"></div>
+                            <div class="color-preset" style="background: #6d758d" data-color="#6d758d"></div>
+                            <div class="color-preset" style="background: #4a5462" data-color="#4a5462"></div>
+                            <div class="color-preset" style="background: #333941" data-color="#333941"></div>
+                            <div class="color-preset" style="background: #bc4a9b" data-color="#bc4a9b"></div>
+                            <div class="color-preset" style="background: #793a80" data-color="#793a80"></div>
+                            <div class="color-preset" style="background: #403353" data-color="#403353"></div>
+                            <div class="color-preset" style="background: #242234" data-color="#242234"></div>
+                            <div class="color-preset" style="background: #e9b5a3" data-color="#e9b5a3"></div>
+                            <div class="color-preset" style="background: #ba756a" data-color="#ba756a"></div>
+                            <div class="color-preset" style="background: #8e5252" data-color="#8e5252"></div>
+                            <div class="color-preset" style="background: #5b3138" data-color="#5b3138"></div>
+                            <div class="color-preset" style="background: #422433" data-color="#422433"></div>
+                            <div class="color-preset" style="background: #221c1a" data-color="#221c1a"></div>
+                            <div class="color-preset" style="background: #322b28" data-color="#322b28"></div>
+                            <div class="color-preset" style="background: #71413b" data-color="#71413b"></div>
+                            <div class="color-preset" style="background: #bb7547" data-color="#bb7547"></div>
+                            <div class="color-preset" style="background: #dba463" data-color="#dba463"></div>
+                            <div class="color-preset" style="background: #f4d29c" data-color="#f4d29c"></div>
+                            <div class="color-preset" style="background: #e4d2aa" data-color="#e4d2aa"></div>
+                            <div class="color-preset" style="background: #c7b08b" data-color="#c7b08b"></div>
+                            <div class="color-preset" style="background: #a08662" data-color="#a08662"></div>
+                            <div class="color-preset" style="background: #796755" data-color="#796755"></div>
+                            <div class="color-preset" style="background: #5a4e44" data-color="#5a4e44"></div>
+                            <div class="color-preset" style="background: #423934" data-color="#423934"></div>
+                            <div class="color-preset" style="background: #060608" data-color="#060608"></div>
+                            <div class="color-preset" style="background: #141013" data-color="#141013"></div>
+                            <div class="color-preset" style="background: #122020" data-color="#122020"></div>
+                            <div class="color-preset" style="background: #ffffff" data-color="#ffffff"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Layers</h3>
+                    <div class="layer-controls">
+                        <button id="addLayerBtn" class="btn btn-small" title="Add Layer">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button id="deleteLayerBtn" class="btn btn-small" title="Delete Layer">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        <button id="moveLayerUpBtn" class="btn btn-small" title="Move Layer Up">
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        <button id="moveLayerDownBtn" class="btn btn-small" title="Move Layer Down">
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
+                        <button id="flattenLayerBtn" class="btn btn-small" title="Flatten Layer Down">
+                            <i class="fas fa-layer-group"></i>
+                        </button>
+                    </div>
+                    <div id="layerList" class="layer-list">
+                        <div class="layer-item active" data-layer="0">
+                            <span class="layer-name">Background</span>
+                            <div class="layer-visibility">
+                                <i class="fas fa-eye"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center - Canvas Area -->
+            <div class="canvas-container">
+                <div class="canvas-toolbar">
+                    <div class="zoom-controls">
+                        <button id="zoomOutBtn" class="btn btn-small" title="Zoom Out">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <div class="zoom-slider-container">
+                            <input type="range" id="zoomSlider" min="10" max="2000" value="100" step="1" class="slider" title="Zoom level">
+                        </div>
+                        <div class="zoom-input-group">
+                            <input type="number" id="zoomInput" min="10" max="2000" value="100" step="1" title="Zoom percentage">
+                            <span class="zoom-percent">%</span>
+                        </div>
+                        <button id="zoomInBtn" class="btn btn-small" title="Zoom In">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button id="resetZoomBtn" class="btn btn-small" title="Reset Zoom">
+                            <i class="fas fa-expand-arrows-alt"></i>
+                        </button>
+                    </div>
+                    <div class="canvas-info">
+                        <span class="zoom-hint">Ctrl+Scroll to zoom</span>
+                    </div>
+                </div>
+                <div class="canvas-wrapper">
+                    <div id="canvas-scaler">
+                        <canvas id="mainCanvas" width="256" height="256"></canvas>
+                        <canvas id="overlayCanvas" width="256" height="256"></canvas>
+                    </div>
+                    <div id="canvasBrushPreview" class="brush-size-preview"></div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Timeline & Frames -->
+            <div class="right-panel">
+                <div class="panel-section">
+                    <h3>Timeline</h3>
+                    <div class="timeline-controls">
+                        <button id="addFrameBtn" class="btn btn-small" title="Add Frame (F)">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button id="duplicateFrameBtn" class="btn btn-small" title="Duplicate Frame (D)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        <button id="deleteFrameBtn" class="btn btn-small" title="Delete Frame (Del)">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    <div id="timeline" class="timeline">
+                        <div class="frame-item active" data-frame="0">
+                            <div class="frame-preview"></div>
+                            <span class="frame-number">1</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Onion Skinning</h3>
+                    <div class="onion-skinning-controls">
+                        <label>
+                            <input type="checkbox" id="onionSkinningEnabled">
+                            Enable Onion Skinning
+                        </label>
+                        <div class="onion-skinning-range">
+                            <label>Range:</label>
+                            <input type="range" id="onionSkinningRange" min="1" max="10" value="3" class="slider">
+                            <span id="onionSkinningValue">3</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Reference Image</h3>
+                    <div class="reference-controls">
+                        <div class="reference-buttons">
+                            <button id="loadReferenceBtn" class="btn btn-small" title="Load Reference Image">
+                                <i class="fas fa-image"></i>
+                            </button>
+                            <button id="screenShareBtn" class="btn btn-small" title="Share Screen/Window">
+                                <i class="fas fa-desktop"></i>
+                            </button>
+                            <button id="toggleReferenceBtn" class="btn btn-small" title="Show/Hide Reference">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button id="resetReferenceBtn" class="btn btn-small" title="Reset Position (Ctrl+R)">
+                                <i class="fas fa-undo"></i>
+                            </button>
+                            <button id="clearReferenceBtn" class="btn btn-small" title="Clear Reference">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="reference-opacity">
+                            <label for="referenceOpacity">Opacity:</label>
+                            <input type="range" id="referenceOpacity" min="0" max="100" value="50" class="slider">
+                            <span id="referenceOpacityValue">50%</span>
+                        </div>
+                        <div class="reference-zoom">
+                            <label for="referenceZoom">Zoom:</label>
+                            <input type="range" id="referenceZoom" min="10" max="500" value="100" class="slider">
+                            <span id="referenceZoomValue">100%</span>
+                        </div>
+                        <div class="reference-help">
+                            <small>Ctrl+click to drag • Ctrl+R to reset • Desktop icon for screen share</small>
+                        </div>
+                    </div>
+                    <div id="referenceContainer" class="reference-container">
+                        <div id="referenceScrollContainer" class="reference-scroll-container">
+                            <img id="referenceImage" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-left">
+                <span id="currentTool">Pen Tool</span>
+                <span id="currentColor">Color: #000000</span>
+                <span id="brushSize">Size: 1px</span>
+            </div>
+            <div class="status-right">
+                <span id="currentFrame">Frame: 1</span>
+                <span id="totalFrames">Total: 1</span>
+                <span id="canvasDimensions">256x256</span>
+                <span id="mousePosition">0, 0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modals -->
+    <div id="newProjectModal" class="modal">
+        <div class="modal-content">
+            <h2>New Project</h2>
+            <div class="form-group">
+                <label for="canvasWidth">Width:</label>
+                <input type="number" id="canvasWidth" value="256" min="1" max="4096">
+            </div>
+            <div class="form-group">
+                <label for="canvasHeight">Height:</label>
+                <input type="number" id="canvasHeight" value="256" min="1" max="4096">
+            </div>
+            <div class="form-group">
+                <label for="backgroundColor">Background Color:</label>
+                <input type="color" id="backgroundColor" value="#ffffff">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="transparentBackground">
+                    Transparent Background
+                </label>
+            </div>
+            <div class="modal-buttons">
+                <button id="createProjectBtn" class="btn btn-primary">Create</button>
+                <button id="cancelNewProjectBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="./node_modules/gif.js/dist/gif.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html> 

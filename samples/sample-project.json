@@ -1,0 +1,47 @@
+{
+  "name": "Sample Animation",
+  "version": "1.0.0",
+  "canvas": {
+    "width": 800,
+    "height": 600,
+    "backgroundColor": "#ffffff",
+    "author": "WASRTK"
+  },
+  "frames": [
+    {
+      "id": 0,
+      "name": "Frame 1",
+      "timestamp": 1703123456789,
+      "layers": [
+        {
+          "id": 0,
+          "name": "Background",
+          "visible": true,
+          "locked": false,
+          "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+      ]
+    }
+  ],
+  "layers": [
+    {
+      "id": 0,
+      "name": "Background",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "settings": {
+    "fps": 12,
+    "onionSkinningEnabled": false,
+    "onionSkinningRange": 3,
+    "referenceOpacity": 0.5,
+    "referenceVisible": false
+  },
+  "metadata": {
+    "created": "2024-01-01T00:00:00.000Z",
+    "modified": "2024-01-01T00:00:00.000Z",
+    "author": "WASRTK",
+    "description": "Sample animation project"
+  }
+} 

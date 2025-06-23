@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+.npm
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Build & Package
+dist/
+build/
+out/
+packages/
+*.tgz
+
+# Electron build artifacts
+app/
+
+# IDE & Editor Config
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS-generated files
+Thumbs.db
+ehthumbs.db
+
+# Environment variables
+.env
+
+# Test & Coverage
+coverage/
+.nyc_output
+
+# REPL History
+.node_repl_history
+
+# Temporary files
+tmp/
+temp/ 

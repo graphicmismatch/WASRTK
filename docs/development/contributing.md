@@ -1,0 +1,196 @@
+# Contributing to WASRTK
+
+## Overview
+
+Thank you for your interest in contributing to WASRTK! This document provides guidelines for contributors.
+
+> **New to open source or JavaScript?** We have a guide just for you! Check out our [Guide for First-Time Contributors](./first-time-contributors.md) to get started.
+
+## Getting Started
+
+### Prerequisites
+- Node.js 16.0.0 or higher
+- Git
+- A code editor (VS Code recommended)
+- Basic knowledge of JavaScript, HTML, and CSS
+
+### Setting Up Development Environment
+1. Fork the repository
+2. Clone your fork locally
+3. Install dependencies: `npm install`
+4. Start development server: `npm run dev`
+
+## Contribution Guidelines
+
+### Code Style
+
+#### JavaScript
+- Use 2 spaces for indentation
+- Use single quotes for strings
+- Always use semicolons
+- Use camelCase for variables and functions
+- Use PascalCase for classes
+
+#### HTML
+- Use 2 spaces for indentation
+- Use lowercase for tags and attributes
+- Use double quotes for attributes
+- Include alt attributes for images
+
+#### CSS
+- Use 2 spaces for indentation
+- Use kebab-case for class names
+- Group related properties together
+
+### Commit Messages
+Follow the conventional commits format:
+```
+type(scope): description
+```
+
+Types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes
+- `refactor`: Code refactoring
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
+
+Examples:
+```
+feat(tools): add new brush tool
+fix(timeline): resolve frame deletion issue
+docs(api): update drawing tools documentation
+```
+
+### Pull Request Process
+
+1. **Create a Feature Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make Your Changes**
+   - Write clear, readable code
+   - Add comments for complex logic
+   - Test your changes thoroughly
+   - Update documentation if needed
+
+3. **Test Your Changes**
+   - Run the application: `npm start`
+   - Test all related functionality
+   - Check for console errors
+
+4. **Commit and Push**
+   ```bash
+   git add .
+   git commit -m "feat(tools): add new brush tool"
+   git push origin feature/your-feature-name
+   ```
+
+5. **Create a Pull Request**
+   - Use a clear, descriptive title
+   - Include a detailed description
+   - Reference any related issues
+   - Add screenshots for UI changes
+
+### Pull Request Template
+
+```markdown
+## Description
+Brief description of the changes made.
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Documentation update
+- [ ] Code refactoring
+- [ ] Performance improvement
+
+## Testing
+- [ ] Tested on Windows
+- [ ] Tested on macOS
+- [ ] Tested on Linux
+- [ ] All existing tests pass
+
+## Checklist
+- [ ] Code follows project style guidelines
+- [ ] Self-review completed
+- [ ] Documentation updated
+- [ ] No console errors
+
+## Screenshots (if applicable)
+Add screenshots for UI changes.
+
+## Related Issues
+Closes #123
+```
+
+## Development Workflow
+
+### Feature Development
+1. **Plan**: Document requirements and design
+2. **Implement**: Write code following guidelines
+3. **Test**: Thoroughly test functionality
+4. **Document**: Update relevant documentation
+5. **Review**: Create pull request for review
+
+### Bug Fixes
+1. **Reproduce**: Confirm the bug exists
+2. **Debug**: Find the root cause
+3. **Fix**: Implement minimal fix
+4. **Test**: Verify the fix works
+5. **Document**: Add tests to prevent regression
+
+## Testing Guidelines
+
+### Manual Testing
+- Test all related functionality
+- Verify UI/UX is intuitive
+- Check for performance issues
+- Test on different operating systems
+- Verify keyboard shortcuts work
+
+## Documentation Standards
+
+### Code Documentation
+- Use JSDoc for functions and classes
+- Include parameter types and descriptions
+- Document complex algorithms
+- Add inline comments for tricky logic
+
+### User Documentation
+- Write clear, concise descriptions
+- Include step-by-step instructions
+- Add screenshots for complex features
+- Keep documentation up to date
+
+## Areas for Contribution
+
+### High Priority
+- Bug fixes and performance improvements
+- Documentation updates and clarifications
+- UI/UX improvements
+- Test coverage expansion
+
+### Medium Priority
+- New drawing tools
+- Export format additions
+- Animation feature enhancements
+- Accessibility improvements
+
+### Low Priority
+- Code refactoring and optimization
+- Additional file format support
+- Advanced animation features
+- Plugin system development
+
+## Getting Help
+
+- **Issues**: Use GitHub issues for bug reports and feature requests
+- **Discussions**: Use GitHub discussions for questions and ideas
+- **Code Review**: Ask for help during pull request reviews
+- **Documentation**: Check existing documentation first
+
+Thank you for contributing to WASRTK! 
