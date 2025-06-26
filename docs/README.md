@@ -1,6 +1,6 @@
 # WASRTK Technical Documentation
 
-Welcome to the technical documentation for WASRTK (Web-based Animation and Sprite Rendering Toolkit).
+Welcome to the technical documentation for WASRTK (Woah, Another Shitty Rotoscoping ToolKit).
 
 ## 📚 Documentation Overview
 
