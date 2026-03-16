@@ -2,6 +2,8 @@ const { ipcRenderer } = require('electron');
 const path = require('path');
 const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif } = require('./exporters');
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
+const { loadTools } = require('./tools');
+const reference = require('./reference');
 
 // Global variables
 let currentTool = 'pen';
@@ -50,6 +52,7 @@ let strokeCtx = null;
 // Initialize the application
 class WASRTK {
     constructor() {
+        this.tools = loadTools();
         this.undoStack = [];
         this.redoStack = [];
         this.initializeCanvas();
@@ -60,6 +63,81 @@ class WASRTK {
         this.updateUI();
         this.updateBrushPreview();
         this.resetZoom();
+    }
+
+    getCurrentToolConfig() {
+        return this.tools[currentTool];
+    }
+
+    getReferenceApi() {
+        return {
+            getImage: () => referenceImage,
+            setImage: (image) => { referenceImage = image; },
+            isVisible: () => referenceVisible,
+            setVisible: (visible) => { referenceVisible = visible; },
+            getOpacity: () => referenceOpacity,
+            setOpacity: (opacity) => { referenceOpacity = opacity; },
+            getX: () => referenceX,
+            getY: () => referenceY,
+            setPosition: (x, y) => { referenceX = x; referenceY = y; },
+            getScale: () => referenceScale,
+            setScale: (scale) => { referenceScale = scale; },
+            getUserModified: () => userModifiedReference,
+            setUserModified: (modified) => { userModifiedReference = modified; },
+            getCanvasWidth: () => mainCanvas.width,
+            getCanvasHeight: () => mainCanvas.height,
+            clear: () => {
+                referenceImage = null;
+                referenceVisible = false;
+                referenceOpacity = 0.5;
+                referenceX = 0;
+                referenceY = 0;
+                referenceScale = 1.0;
+                userModifiedReference = false;
+            }
+        };
+    }
+
+    getCurrentColor() {
+        return currentColor;
+    }
+
+    getBrushSize() {
+        return brushSize;
+    }
+
+    clearOverlay() {
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    }
+
+    createStrokeLayer() {
+        strokeCanvas = document.createElement('canvas');
+        strokeCanvas.width = mainCanvas.width;
+        strokeCanvas.height = mainCanvas.height;
+        strokeCtx = strokeCanvas.getContext('2d');
+        this.applyImageSmoothing(strokeCtx);
+    }
+
+    commitStrokeLayer() {
+        if (!strokeCanvas || !strokeCtx) {
+            return;
+        }
+
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (layer && !layer.locked) {
+            const ctx = layer.canvas.getContext('2d');
+            ctx.save();
+            ctx.globalAlpha = currentOpacity;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(strokeCanvas, 0, 0);
+            ctx.restore();
+        }
+
+        strokeCanvas = null;
+        strokeCtx = null;
+        this.clearOverlay();
+        this.renderCurrentFrame();
     }
 
     // Helper function to convert screen coordinates to canvas coordinates
@@ -354,26 +432,7 @@ class WASRTK {
         // Reference image
         document.getElementById('loadReferenceBtn').addEventListener('click', () => this.loadReferenceImage());
         document.getElementById('screenShareBtn').addEventListener('click', () => this.startScreenShare());
-        document.getElementById('toggleReferenceBtn').addEventListener('click', () => this.toggleReference());
-        document.getElementById('resetReferenceBtn').addEventListener('click', () => {
-            if (referenceImage && referenceVisible) {
-                this.resetReferencePosition();
-            }
-        });
-        document.getElementById('clearReferenceBtn').addEventListener('click', () => this.clearReferenceImage());
-        document.getElementById('referenceOpacity').addEventListener('input', (e) => {
-            referenceOpacity = parseInt(e.target.value) / 100;
-            document.getElementById('referenceOpacityValue').textContent = e.target.value + '%';
-            this.renderCurrentFrame();
-        });
-        document.getElementById('referenceZoom').addEventListener('input', (e) => {
-            const zoomPercentage = parseInt(e.target.value);
-            referenceScale = zoomPercentage / 100;
-            document.getElementById('referenceZoomValue').textContent = zoomPercentage + '%';
-            userModifiedReference = true; // Mark as user modified
-            this.updateReferencePreview();
-            this.renderCurrentFrame();
-        });
+        reference.bindReferenceSettingsEvents(this, this.getReferenceApi());
 
         // Modal events
         document.getElementById('createProjectBtn').addEventListener('click', () => this.createNewProject());
@@ -612,75 +671,39 @@ class WASRTK {
 
     // Drawing methods
     startDrawing(e) {
-        if (["pen", "eraser", "fill", "line", "rectangle", "circle"].includes(currentTool)) {
+        const tool = this.getCurrentToolConfig();
+
+        if (tool?.saveStateOnStart) {
             this.saveState();
         }
+
         isDrawing = true;
         const coords = this.screenToCanvas(e.clientX, e.clientY);
         lastMousePos = coords; // Initialize last position
         this.startShape = coords; // For shape tools
-        // --- Begin per-stroke compositing for pen only ---
-        if (currentTool === "pen") {
-            strokeCanvas = document.createElement('canvas');
-            strokeCanvas.width = mainCanvas.width;
-            strokeCanvas.height = mainCanvas.height;
-            strokeCtx = strokeCanvas.getContext('2d');
-            this.applyImageSmoothing(strokeCtx);
-        }
-        this.drawPoint(coords.x, coords.y, currentTool === "pen");
-        if (["line", "rectangle", "circle"].includes(currentTool)) {
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        }
+        tool?.onStart?.(this, { coords });
     }
 
     draw(e) {
         if (!isDrawing) return;
         const currentCoords = this.screenToCanvas(e.clientX, e.clientY);
-        if (currentTool === "pen") {
-            if (lastMousePos) {
-                this.drawLine(lastMousePos.x, lastMousePos.y, currentCoords.x, currentCoords.y, true);
-            } else {
-                this.drawPoint(currentCoords.x, currentCoords.y, true);
-            }
-            lastMousePos = currentCoords;
-        } else if (["eraser"].includes(currentTool)) {
-            if (lastMousePos) {
-                this.drawLine(lastMousePos.x, lastMousePos.y, currentCoords.x, currentCoords.y, false);
-            } else {
-                this.drawPoint(currentCoords.x, currentCoords.y, false);
-            }
-            lastMousePos = currentCoords;
-        } else if (["line", "rectangle", "circle"].includes(currentTool)) {
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            this.drawShapePreview(this.startShape, currentCoords, currentTool);
-            lastMousePos = currentCoords;
-        }
+        const tool = this.getCurrentToolConfig();
+
+        tool?.onDraw?.(this, {
+            currentCoords,
+            lastMousePos,
+            startShape: this.startShape
+        });
+
+        lastMousePos = currentCoords;
     }
 
     stopDrawing() {
         if (!isDrawing) return;
         isDrawing = false;
-        if (currentTool === "pen" && strokeCanvas && strokeCtx) {
-            // Composite the stroke onto the main layer with the desired opacity
-            const frame = frames[currentFrame];
-            const layer = frame.layers[currentLayer];
-            if (layer && !layer.locked) {
-                const ctx = layer.canvas.getContext('2d');
-                ctx.save();
-                ctx.globalAlpha = currentOpacity;
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.drawImage(strokeCanvas, 0, 0);
-                ctx.restore();
-            }
-            strokeCanvas = null;
-            strokeCtx = null;
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); // Clear preview
-            this.renderCurrentFrame();
-        }
-        if (["line", "rectangle", "circle"].includes(currentTool) && this.startShape && lastMousePos) {
-            this.commitShape(this.startShape, lastMousePos, currentTool);
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        }
+        const tool = this.getCurrentToolConfig();
+        tool?.onStop?.(this, { startShape: this.startShape, lastMousePos });
+
         lastMousePos = null;
         this.startShape = null;
     }
@@ -698,32 +721,8 @@ class WASRTK {
         this.applyImageSmoothing(ctx);
         ctx.globalAlpha = (useStrokeCtx && currentTool === "pen") ? 1.0 : currentOpacity;
         const coords = antialiasingEnabled ? { x, y } : this.roundToPixel(x, y);
-        switch (currentTool) {
-            case 'pen':
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.fillStyle = currentColor;
-                if (brushSize === 1) {
-                    ctx.fillRect(coords.x, coords.y, 1, 1);
-                } else {
-                    ctx.beginPath();
-                    ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                break;
-            case 'eraser':
-                ctx.globalCompositeOperation = 'destination-out';
-                if (brushSize === 1) {
-                    ctx.clearRect(coords.x, coords.y, 1, 1);
-                } else {
-                    ctx.beginPath();
-                    ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                break;
-            case 'fill':
-                if (!useStrokeCtx) this.floodFill(ctx, coords.x, coords.y, currentColor);
-                break;
-        }
+        const tool = this.getCurrentToolConfig();
+        tool?.drawPoint?.(this, { ctx, coords, useStrokeCtx });
         ctx.restore();
         if (useStrokeCtx && currentTool === "pen") {
             this.showStrokePreview();
@@ -800,30 +799,8 @@ class WASRTK {
             ctx.save();
             this.applyImageSmoothing(ctx);
             ctx.globalAlpha = (useStrokeCtx && currentTool === "pen") ? 1.0 : currentOpacity;
-            switch (currentTool) {
-                case 'pen':
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.strokeStyle = currentColor;
-                    ctx.lineWidth = brushSize;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x2, y2);
-                    ctx.stroke();
-                    break;
-                case 'eraser':
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.strokeStyle = 'rgba(0,0,0,1)';
-                    ctx.lineWidth = brushSize;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x2, y2);
-                    ctx.stroke();
-                    break;
-            }
+            const tool = this.getCurrentToolConfig();
+            tool?.drawLine?.(this, { ctx, x1, y1, x2, y2, useStrokeCtx });
             ctx.restore();
             if (useStrokeCtx && currentTool === "pen") {
                 this.showStrokePreview();
@@ -1627,60 +1604,37 @@ class WASRTK {
 
     // Reference image methods
     loadReferenceImage() {
-        // Clear any existing reference (including screen sharing) before loading new one
-        if (referenceImage || this.screenCaptureInterval) {
-            this.clearReferenceImage();
-        }
-        
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        referenceImage = img;
-                        
-                        // Center the reference image on the canvas
-                        referenceX = (mainCanvas.width - img.width) / 2;
-                        referenceY = (mainCanvas.height - img.height) / 2;
-                        referenceScale = 1.0;
-                        
-                        // Update the UI container
-                        const uiImage = document.getElementById('referenceImage');
-                        uiImage.src = e.target.result;
-                        uiImage.style.display = 'block';
-                        uiImage.style.transform = `scale(${referenceScale})`;
-                        
-                        // Update zoom slider
-                        const zoomSlider = document.getElementById('referenceZoom');
-                        zoomSlider.value = Math.round(referenceScale * 100);
-                        document.getElementById('referenceZoomValue').textContent = Math.round(referenceScale * 100) + '%';
-                        
-                        // Make reference visible
-                        referenceVisible = true;
-                        document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
-                        
-                        this.renderCurrentFrame();
-                        this.updateStatusBar();
-                    };
-                    img.src = e.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        };
-        input.click();
+        reference.loadReferenceImage(this);
+    }
+
+    hasReferenceSource() {
+        return Boolean(referenceImage || this.screenCaptureInterval);
+    }
+
+    setLoadedReferenceImage(img, dataUrl) {
+        referenceImage = img;
+        referenceX = (mainCanvas.width - img.width) / 2;
+        referenceY = (mainCanvas.height - img.height) / 2;
+        referenceScale = 1.0;
+
+        const uiImage = document.getElementById('referenceImage');
+        uiImage.src = dataUrl;
+        uiImage.style.display = 'block';
+        uiImage.style.transform = `scale(${referenceScale})`;
+
+        const zoomSlider = document.getElementById('referenceZoom');
+        zoomSlider.value = Math.round(referenceScale * 100);
+        document.getElementById('referenceZoomValue').textContent = Math.round(referenceScale * 100) + '%';
+
+        referenceVisible = true;
+        document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
+
+        this.renderCurrentFrame();
+        this.updateStatusBar();
     }
 
     toggleReference() {
-        referenceVisible = !referenceVisible;
-        document.getElementById('toggleReferenceBtn').innerHTML = 
-            referenceVisible ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
-        this.renderCurrentFrame();
-        this.updateStatusBar();
+        reference.toggleReference(this, this.getReferenceApi());
     }
 
     // Modal methods
@@ -2027,309 +1981,47 @@ class WASRTK {
     }
 
     startScreenShare() {
-        // If already screen sharing, stop current session and clear reference
-        if (this.screenCaptureInterval) {
-            this.stopScreenShare();
-            this.clearReferenceImage();
-        }
-        // If there's a reference image but no active screen sharing, clear it
-        else if (referenceImage) {
-            this.clearReferenceImage();
-        }
-        
-        // Use IPC to get screen sources from main process
-        const { ipcRenderer } = require('electron');
-        
-        ipcRenderer.invoke('get-screen-sources').then(sources => {
-            if (sources.length === 0) {
-                alert('No screen sources found. Please check your system permissions.');
-                return;
-            }
-            this.showScreenShareModal(sources);
-        }).catch(err => {
-            console.error('Error getting screen sources:', err);
-            // Try fallback method
-            this.tryFallbackScreenCapture();
-        });
+        reference.startScreenShare(this, this.getReferenceApi());
     }
     
     tryFallbackScreenCapture() {
-        // Fallback method using IPC
-        const { ipcRenderer } = require('electron');
-        
-        ipcRenderer.invoke('get-screen-sources-fallback').then(sources => {
-            if (sources.length > 0) {
-                this.showScreenShareModal(sources);
-            } else {
-                alert('Screen capture is not available. Please check your system permissions and try again.');
-            }
-        }).catch(err => {
-            console.error('Fallback also failed:', err);
-            alert('Screen capture is not supported on this system or requires additional permissions.');
-        });
+        reference.tryFallbackScreenCapture(this);
     }
     
     showScreenShareModal(sources) {
-        // Create modal for screen selection
-        const modal = document.createElement('div');
-        modal.className = 'modal show';
-        modal.id = 'screenShareModal';
-        
-        const modalContent = document.createElement('div');
-        modalContent.className = 'modal-content screen-share-modal';
-        
-        const title = document.createElement('h2');
-        title.textContent = 'Select Screen or Window';
-        
-        const sourcesContainer = document.createElement('div');
-        sourcesContainer.className = 'screen-sources';
-        
-        sources.forEach(source => {
-            const sourceItem = document.createElement('div');
-            sourceItem.className = 'screen-source-item';
-            sourceItem.innerHTML = `
-                <img src="${source.thumbnail}" alt="${source.name}" class="source-thumbnail">
-                <div class="source-info">
-                    <span class="source-name">${source.name}</span>
-                    <span class="source-type">${source.id.includes('screen') ? 'Screen' : 'Window'}</span>
-                </div>
-            `;
-            
-            sourceItem.addEventListener('click', () => {
-                this.selectScreenSource(source);
-                this.hideScreenShareModal();
-            });
-            
-            sourcesContainer.appendChild(sourceItem);
-        });
-        
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'btn btn-secondary';
-        cancelBtn.textContent = 'Cancel';
-        cancelBtn.addEventListener('click', () => this.hideScreenShareModal());
-        
-        modalContent.appendChild(title);
-        modalContent.appendChild(sourcesContainer);
-        modalContent.appendChild(cancelBtn);
-        modal.appendChild(modalContent);
-        
-        document.body.appendChild(modal);
+        reference.showScreenShareModal(this, sources);
     }
     
     hideScreenShareModal() {
-        const modal = document.getElementById('screenShareModal');
-        if (modal) {
-            modal.remove();
-        }
-        
-        // Ensure the screen share button is properly restored if no active screen sharing
-        if (!this.screenCaptureInterval) {
-            document.getElementById('screenShareBtn').innerHTML = '<i class="fas fa-desktop"></i>';
-            document.getElementById('screenShareBtn').title = 'Share Screen/Window';
-            document.getElementById('screenShareBtn').classList.remove('active');
-        }
+        reference.hideScreenShareModal(this);
     }
     
     selectScreenSource(source) {
-        // Use getUserMedia directly with the source ID
-        navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-                mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: source.id,
-                    minWidth: 800,
-                    maxWidth: 1920,
-                    minHeight: 600,
-                    maxHeight: 1080
-                }
-            }
-        }).then(stream => {
-            this.setupScreenShareStream(stream, source.name);
-        }).catch(err => {
-            console.error('Error accessing screen:', err);
-            // Try alternative approach
-            this.tryAlternativeScreenCapture(source);
-        });
+        reference.selectScreenSource(this, source);
     }
     
     tryAlternativeScreenCapture(source) {
-        // Alternative approach using a simpler getUserMedia call
-        navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: {
-                mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: source.id
-                }
-            }
-        }).then(stream => {
-            this.setupScreenShareStream(stream, source.name);
-        }).catch(err => {
-            console.error('Alternative capture also failed:', err);
-            alert('Screen capture failed. Please check your system permissions and try again.');
-        });
+        reference.tryAlternativeScreenCapture(this, source);
     }
     
     setupScreenShareStream(stream, sourceName) {
-        // Create video element to capture frames
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.autoplay = true;
-        video.muted = true;
-        
-        // Create canvas to capture frames
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        video.onloadedmetadata = () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            // Start capturing frames
-            this.startFrameCapture(video, canvas, ctx, sourceName);
-        };
-        
-        video.onerror = (err) => {
-            console.error('Video error:', err);
-            alert('Error setting up video stream. Please try again.');
-        };
+        reference.setupScreenShareStream(this, stream, sourceName);
     }
     
     startFrameCapture(video, canvas, ctx, sourceName) {
-        // Capture frame every 200ms (5 FPS) to reduce performance impact
-        const captureInterval = setInterval(() => {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                try {
-                    ctx.drawImage(video, 0, 0);
-                    
-                    // Convert canvas to blob
-                    canvas.toBlob(blob => {
-                        if (blob) {
-                            // For the first capture (when no reference image exists), always make it visible
-                            if (!referenceImage) {
-                                referenceVisible = true;
-                                document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
-                            }
-                            
-                            // Only update reference if it's visible and either first capture or user hasn't modified position/zoom
-                            if (referenceVisible && (!referenceImage || !userModifiedReference)) {
-                                this.loadReferenceFromBlob(blob, sourceName);
-                            } else if (referenceVisible && referenceImage && userModifiedReference) {
-                                // Update the reference image without changing position/zoom
-                                this.updateReferenceImageOnly(blob);
-                            }
-                            // If referenceVisible is false, don't update the reference image at all
-                        }
-                    }, 'image/png');
-                } catch (err) {
-                    console.error('Frame capture error:', err);
-                }
-            }
-        }, 200);
-        
-        // Store interval reference for cleanup
-        this.screenCaptureInterval = captureInterval;
-        
-        // Update UI to show active screen share
-        document.getElementById('screenShareBtn').innerHTML = '<i class="fas fa-stop"></i>';
-        document.getElementById('screenShareBtn').title = 'Stop Screen Share';
-        document.getElementById('screenShareBtn').classList.add('active');
-        
-        // Add stop functionality
-        document.getElementById('screenShareBtn').onclick = () => this.stopScreenShare();
+        reference.startFrameCapture(this, video, canvas, ctx, sourceName);
     }
     
     updateReferenceImageOnly(blob) {
-        // Update only the image content without changing position or zoom
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                // Keep the current position and scale
-                const currentX = referenceX;
-                const currentY = referenceY;
-                const currentScale = referenceScale;
-                const currentVisible = referenceVisible; // Preserve visibility state
-                
-                referenceImage = img;
-                
-                // Restore the user's position and scale
-                referenceX = currentX;
-                referenceY = currentY;
-                referenceScale = currentScale;
-                referenceVisible = currentVisible; // Restore visibility state
-                
-                // Update the UI container without changing transform
-                const uiImage = document.getElementById('referenceImage');
-                uiImage.src = e.target.result;
-                uiImage.style.transform = `scale(${referenceScale})`;
-                
-                // Update zoom slider to match current scale
-                const zoomSlider = document.getElementById('referenceZoom');
-                zoomSlider.value = Math.round(referenceScale * 100);
-                document.getElementById('referenceZoomValue').textContent = Math.round(referenceScale * 100) + '%';
-                
-                this.renderCurrentFrame();
-                this.updateStatusBar();
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(blob);
+        reference.updateReferenceImageOnly(this, this.getReferenceApi(), blob);
     }
     
     loadReferenceFromBlob(blob, sourceName) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                referenceImage = img;
-                
-                // Center the reference image on the canvas
-                referenceX = (mainCanvas.width - img.width) / 2;
-                referenceY = (mainCanvas.height - img.height) / 2;
-                referenceScale = 1.0;
-                
-                // Update the UI container
-                const uiImage = document.getElementById('referenceImage');
-                uiImage.src = e.target.result;
-                uiImage.style.display = 'block';
-                uiImage.style.transform = `scale(${referenceScale})`;
-                
-                // Update zoom slider
-                const zoomSlider = document.getElementById('referenceZoom');
-                zoomSlider.value = Math.round(referenceScale * 100);
-                document.getElementById('referenceZoomValue').textContent = Math.round(referenceScale * 100) + '%';
-                
-                // Always make reference visible when screen sharing starts (first capture)
-                // During updates, preserve the user's visibility preference
-                if (!referenceVisible) {
-                    referenceVisible = true;
-                    document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
-                }
-                
-                this.renderCurrentFrame();
-                this.updateStatusBar();
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(blob);
+        reference.loadReferenceFromBlob(this, this.getReferenceApi(), blob, sourceName);
     }
     
     stopScreenShare() {
-        // Clear the capture interval
-        if (this.screenCaptureInterval) {
-            clearInterval(this.screenCaptureInterval);
-            this.screenCaptureInterval = null;
-        }
-        
-        // Reset the screen share button
-        document.getElementById('screenShareBtn').innerHTML = '<i class="fas fa-desktop"></i>';
-        document.getElementById('screenShareBtn').title = 'Share Screen/Window';
-        document.getElementById('screenShareBtn').classList.remove('active');
-        
-        // Note: Don't restore click handler here - it will be handled by startScreenShare
-        // or the user can click the button again to start a new session
+        reference.stopScreenShare(this);
     }
 
     updateUI() {
@@ -2383,62 +2075,15 @@ class WASRTK {
     }
 
     resetReferencePosition() {
-        referenceX = (mainCanvas.width - referenceImage.width) / 2;
-        referenceY = (mainCanvas.height - referenceImage.height) / 2;
-        referenceScale = 1.0;
-        userModifiedReference = false; // Reset the flag when user resets position
-        this.updateReferencePreview();
-        this.renderCurrentFrame();
+        reference.resetReferencePosition(this, this.getReferenceApi(), mainCanvas);
     }
 
     clearReferenceImage() {
-        // Stop screen sharing if active
-        if (this.screenCaptureInterval) {
-            this.stopScreenShare();
-        }
-        
-        referenceImage = null;
-        referenceVisible = false;
-        referenceOpacity = 0.5;
-        referenceX = 0;
-        referenceY = 0;
-        referenceScale = 1.0;
-        userModifiedReference = false; // Reset the flag
-        
-        // Clear the UI image
-        const uiImage = document.getElementById('referenceImage');
-        uiImage.src = '';
-        uiImage.style.display = 'none';
-        uiImage.style.transform = 'scale(1)';
-        
-        // Reset zoom slider
-        const zoomSlider = document.getElementById('referenceZoom');
-        zoomSlider.value = 100;
-        document.getElementById('referenceZoomValue').textContent = '100%';
-        
-        // Update toggle button
-        document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye"></i>';
-        
-        this.renderCurrentFrame();
-        this.updateStatusBar();
+        reference.clearReferenceImage(this, this.getReferenceApi());
     }
 
     updateReferencePreview() {
-        if (referenceImage) {
-            const uiImage = document.getElementById('referenceImage');
-            const zoomPercentage = Math.round(referenceScale * 100);
-            
-            // Update the zoom slider to match current scale
-            const zoomSlider = document.getElementById('referenceZoom');
-            zoomSlider.value = zoomPercentage;
-            document.getElementById('referenceZoomValue').textContent = zoomPercentage + '%';
-            
-            // Apply zoom transform to the preview image, but keep it contained
-            uiImage.style.transform = `scale(${referenceScale})`;
-            uiImage.style.maxWidth = '100%';
-            uiImage.style.maxHeight = '100%';
-            uiImage.style.objectFit = 'contain';
-        }
+        reference.updateReferencePreview(this.getReferenceApi());
     }
 
     // Helper to show the in-progress stroke on the overlay canvas
