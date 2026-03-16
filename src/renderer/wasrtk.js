@@ -2,6 +2,7 @@ const { ipcRenderer } = require('electron');
 const path = require('path');
 const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif } = require('./exporters');
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
+const { loadTools } = require('./tools');
 
 // Global variables
 let currentTool = 'pen';
@@ -50,6 +51,7 @@ let strokeCtx = null;
 // Initialize the application
 class WASRTK {
     constructor() {
+        this.tools = loadTools();
         this.undoStack = [];
         this.redoStack = [];
         this.initializeCanvas();
@@ -60,6 +62,52 @@ class WASRTK {
         this.updateUI();
         this.updateBrushPreview();
         this.resetZoom();
+    }
+
+    getCurrentToolConfig() {
+        return this.tools[currentTool];
+    }
+
+    getCurrentColor() {
+        return currentColor;
+    }
+
+    getBrushSize() {
+        return brushSize;
+    }
+
+    clearOverlay() {
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    }
+
+    createStrokeLayer() {
+        strokeCanvas = document.createElement('canvas');
+        strokeCanvas.width = mainCanvas.width;
+        strokeCanvas.height = mainCanvas.height;
+        strokeCtx = strokeCanvas.getContext('2d');
+        this.applyImageSmoothing(strokeCtx);
+    }
+
+    commitStrokeLayer() {
+        if (!strokeCanvas || !strokeCtx) {
+            return;
+        }
+
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (layer && !layer.locked) {
+            const ctx = layer.canvas.getContext('2d');
+            ctx.save();
+            ctx.globalAlpha = currentOpacity;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(strokeCanvas, 0, 0);
+            ctx.restore();
+        }
+
+        strokeCanvas = null;
+        strokeCtx = null;
+        this.clearOverlay();
+        this.renderCurrentFrame();
     }
 
     // Helper function to convert screen coordinates to canvas coordinates
@@ -612,75 +660,39 @@ class WASRTK {
 
     // Drawing methods
     startDrawing(e) {
-        if (["pen", "eraser", "fill", "line", "rectangle", "circle"].includes(currentTool)) {
+        const tool = this.getCurrentToolConfig();
+
+        if (tool?.saveStateOnStart) {
             this.saveState();
         }
+
         isDrawing = true;
         const coords = this.screenToCanvas(e.clientX, e.clientY);
         lastMousePos = coords; // Initialize last position
         this.startShape = coords; // For shape tools
-        // --- Begin per-stroke compositing for pen only ---
-        if (currentTool === "pen") {
-            strokeCanvas = document.createElement('canvas');
-            strokeCanvas.width = mainCanvas.width;
-            strokeCanvas.height = mainCanvas.height;
-            strokeCtx = strokeCanvas.getContext('2d');
-            this.applyImageSmoothing(strokeCtx);
-        }
-        this.drawPoint(coords.x, coords.y, currentTool === "pen");
-        if (["line", "rectangle", "circle"].includes(currentTool)) {
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        }
+        tool?.onStart?.(this, { coords });
     }
 
     draw(e) {
         if (!isDrawing) return;
         const currentCoords = this.screenToCanvas(e.clientX, e.clientY);
-        if (currentTool === "pen") {
-            if (lastMousePos) {
-                this.drawLine(lastMousePos.x, lastMousePos.y, currentCoords.x, currentCoords.y, true);
-            } else {
-                this.drawPoint(currentCoords.x, currentCoords.y, true);
-            }
-            lastMousePos = currentCoords;
-        } else if (["eraser"].includes(currentTool)) {
-            if (lastMousePos) {
-                this.drawLine(lastMousePos.x, lastMousePos.y, currentCoords.x, currentCoords.y, false);
-            } else {
-                this.drawPoint(currentCoords.x, currentCoords.y, false);
-            }
-            lastMousePos = currentCoords;
-        } else if (["line", "rectangle", "circle"].includes(currentTool)) {
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            this.drawShapePreview(this.startShape, currentCoords, currentTool);
-            lastMousePos = currentCoords;
-        }
+        const tool = this.getCurrentToolConfig();
+
+        tool?.onDraw?.(this, {
+            currentCoords,
+            lastMousePos,
+            startShape: this.startShape
+        });
+
+        lastMousePos = currentCoords;
     }
 
     stopDrawing() {
         if (!isDrawing) return;
         isDrawing = false;
-        if (currentTool === "pen" && strokeCanvas && strokeCtx) {
-            // Composite the stroke onto the main layer with the desired opacity
-            const frame = frames[currentFrame];
-            const layer = frame.layers[currentLayer];
-            if (layer && !layer.locked) {
-                const ctx = layer.canvas.getContext('2d');
-                ctx.save();
-                ctx.globalAlpha = currentOpacity;
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.drawImage(strokeCanvas, 0, 0);
-                ctx.restore();
-            }
-            strokeCanvas = null;
-            strokeCtx = null;
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); // Clear preview
-            this.renderCurrentFrame();
-        }
-        if (["line", "rectangle", "circle"].includes(currentTool) && this.startShape && lastMousePos) {
-            this.commitShape(this.startShape, lastMousePos, currentTool);
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        }
+        const tool = this.getCurrentToolConfig();
+        tool?.onStop?.(this, { startShape: this.startShape, lastMousePos });
+
         lastMousePos = null;
         this.startShape = null;
     }
@@ -698,32 +710,8 @@ class WASRTK {
         this.applyImageSmoothing(ctx);
         ctx.globalAlpha = (useStrokeCtx && currentTool === "pen") ? 1.0 : currentOpacity;
         const coords = antialiasingEnabled ? { x, y } : this.roundToPixel(x, y);
-        switch (currentTool) {
-            case 'pen':
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.fillStyle = currentColor;
-                if (brushSize === 1) {
-                    ctx.fillRect(coords.x, coords.y, 1, 1);
-                } else {
-                    ctx.beginPath();
-                    ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                break;
-            case 'eraser':
-                ctx.globalCompositeOperation = 'destination-out';
-                if (brushSize === 1) {
-                    ctx.clearRect(coords.x, coords.y, 1, 1);
-                } else {
-                    ctx.beginPath();
-                    ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                break;
-            case 'fill':
-                if (!useStrokeCtx) this.floodFill(ctx, coords.x, coords.y, currentColor);
-                break;
-        }
+        const tool = this.getCurrentToolConfig();
+        tool?.drawPoint?.(this, { ctx, coords, useStrokeCtx });
         ctx.restore();
         if (useStrokeCtx && currentTool === "pen") {
             this.showStrokePreview();
@@ -800,30 +788,8 @@ class WASRTK {
             ctx.save();
             this.applyImageSmoothing(ctx);
             ctx.globalAlpha = (useStrokeCtx && currentTool === "pen") ? 1.0 : currentOpacity;
-            switch (currentTool) {
-                case 'pen':
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.strokeStyle = currentColor;
-                    ctx.lineWidth = brushSize;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x2, y2);
-                    ctx.stroke();
-                    break;
-                case 'eraser':
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.strokeStyle = 'rgba(0,0,0,1)';
-                    ctx.lineWidth = brushSize;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x2, y2);
-                    ctx.stroke();
-                    break;
-            }
+            const tool = this.getCurrentToolConfig();
+            tool?.drawLine?.(this, { ctx, x1, y1, x2, y2, useStrokeCtx });
             ctx.restore();
             if (useStrokeCtx && currentTool === "pen") {
                 this.showStrokePreview();
