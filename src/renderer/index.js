@@ -1,10 +1,4 @@
-const { WASRTK } = require('./wasrtk');
-
-function bootstrap() {
-  document.addEventListener('DOMContentLoaded', () => {
-    new WASRTK();
-  });
-}
+const { bootstrap } = require('./app/bootstrap');
 
 module.exports = {
   bootstrap

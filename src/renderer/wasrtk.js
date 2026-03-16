@@ -1,7 +1,7 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
-const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif } = require('./exporters');
-const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
+const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif } = require('./export/export-service');
+const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project/project-service');
 const { loadTools } = require('./tools');
 const reference = require('./reference');
 

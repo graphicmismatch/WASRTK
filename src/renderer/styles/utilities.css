@@ -1,0 +1,128 @@
+/* Reference Image */
+.reference-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.reference-buttons {
+    display: flex;
+    gap: 5px;
+    justify-content: center;
+}
+
+.reference-opacity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.reference-opacity label {
+    font-size: 12px;
+    color: var(--text-light);
+    min-width: 50px;
+}
+
+.reference-opacity .slider {
+    flex: 1;
+}
+
+.reference-opacity span {
+    font-size: 12px;
+    color: var(--text-light);
+    min-width: 30px;
+    text-align: right;
+}
+
+.reference-zoom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.reference-zoom label {
+    font-size: 12px;
+    color: var(--text-light);
+    min-width: 50px;
+}
+
+.reference-zoom .slider {
+    flex: 1;
+}
+
+.reference-zoom span {
+    font-size: 12px;
+    color: var(--text-light);
+    min-width: 30px;
+    text-align: right;
+}
+
+.reference-help {
+    text-align: center;
+    color: var(--text-light);
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.reference-container {
+    width: 100%;
+    height: 120px;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--bg-med);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.reference-scroll-container {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+#referenceImage {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.1s ease;
+}
+
+
+/* Reference image dragging cursor */
+.canvas-wrapper.dragging-reference {
+    cursor: move;
+}
+
+
+/* Tooltip styles */
+[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    background: #000000;
+    color: #ffffff;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-top: 5px;
+}
+
+
+/* Active screen share button */
+.btn.active {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn.active:hover {
+    background-color: var(--text-light);
+    border-color: var(--text-light);
+}
