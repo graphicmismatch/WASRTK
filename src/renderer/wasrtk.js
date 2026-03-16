@@ -1,5 +1,7 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
+const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif } = require('./exporters');
+const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
 
 // Global variables
 let currentTool = 'pen';
@@ -1780,14 +1782,7 @@ class WASRTK {
     }
 
     getMimeType(fileExtension) {
-        const mimeTypes = {
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.gif': 'image/gif',
-            '.bmp': 'image/bmp'
-        };
-        return mimeTypes[fileExtension] || 'application/octet-stream';
+        return resolveMimeType(fileExtension);
     }
 
     async saveAnimation(filePath) {
@@ -1813,81 +1808,39 @@ class WASRTK {
 
     async saveProject(filePath) {
         try {
-            // Validate current state before saving
             if (!frames || frames.length === 0) {
                 throw new Error('No frames to save. Please create at least one frame.');
             }
 
-            // Prepare project data
-            const projectData = {
-                name: "WASRTK Project",
-                version: "1.0.0",
+            const projectData = buildProjectData({
+                frames,
+                layers,
                 canvas: {
                     width: mainCanvas.width,
                     height: mainCanvas.height,
-                    backgroundColor: hasTransparentBackground ? null : "#ffffff",
+                    backgroundColor: hasTransparentBackground ? null : '#ffffff',
                     transparentBackground: hasTransparentBackground,
-                    author: "WASRTK"
+                    author: 'WASRTK'
                 },
-                frames: frames.map(frame => ({
-                    id: frame.id,
-                    name: frame.name,
-                    timestamp: frame.timestamp,
-                    layers: frame.layers.map(layer => ({
-                        id: layer.id,
-                        name: layer.name,
-                        visible: layer.visible,
-                        locked: layer.locked,
-                        data: layer.canvas.toDataURL('image/png')
-                    }))
-                })),
-                layers: layers.map(layer => ({
-                    id: layer.id,
-                    name: layer.name,
-                    visible: layer.visible,
-                    locked: layer.locked
-                })),
                 settings: {
-                    fps: fps,
-                    onionSkinningEnabled: onionSkinningEnabled,
-                    onionSkinningRange: onionSkinningRange,
-                    referenceOpacity: referenceOpacity,
-                    referenceVisible: referenceVisible,
-                    antialiasingEnabled: antialiasingEnabled,
-                    currentTool: currentTool,
-                    currentColor: currentColor,
-                    currentOpacity: currentOpacity,
-                    brushSize: brushSize,
-                    zoom: zoom
-                },
-                metadata: {
-                    created: new Date().toISOString(),
-                    modified: new Date().toISOString(),
-                    author: "WASRTK",
-                    description: "WASRTK pixel art and animation project"
+                    fps,
+                    onionSkinningEnabled,
+                    onionSkinningRange,
+                    referenceOpacity,
+                    referenceVisible,
+                    antialiasingEnabled,
+                    currentTool,
+                    currentColor,
+                    currentOpacity,
+                    brushSize,
+                    zoom
                 }
-            };
+            });
 
-            // Convert to JSON string with validation
-            let jsonData;
-            try {
-                jsonData = JSON.stringify(projectData, null, 2);
-                console.log('JSON stringified successfully, length:', jsonData.length);
-            } catch (stringifyError) {
-                console.error('JSON stringify error:', stringifyError);
-                throw new Error(`Failed to serialize project data: ${stringifyError.message}`);
-            }
+            const jsonData = serializeProjectData(projectData);
 
-            // Validate JSON can be parsed back
-            try {
-                JSON.parse(jsonData);
-            } catch (parseError) {
-                throw new Error(`Generated invalid JSON: ${parseError.message}`);
-            }
-            
-            // Save file
             const result = await ipcRenderer.invoke('save-file', {
-                filePath: filePath,
+                filePath,
                 data: jsonData
             });
 
@@ -1903,106 +1856,36 @@ class WASRTK {
     }
 
     async saveAsPngSequence(filePath) {
-        const dir = path.dirname(filePath);
-        const baseName = path.basename(filePath, '.png');
-
-        for (let i = 0; i < frames.length; i++) {
-            const frame = frames[i];
-            const frameNumber = (i + 1).toString().padStart(4, '0');
-            const framePath = path.join(dir, `${baseName}-${frameNumber}.png`);
-
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = mainCanvas.width;
-            tempCanvas.height = mainCanvas.height;
-            const tempCtx = tempCanvas.getContext('2d');
-
-            // Clear canvas to transparent (don't fill with background color)
-            tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-            // Draw all visible layers (this preserves transparency)
-            frame.layers.forEach(layer => {
-                if (layer.visible) {
-                    tempCtx.drawImage(layer.canvas, 0, 0);
-                }
-            });
-
-            const dataUrl = tempCanvas.toDataURL('image/png');
-            const buffer = Buffer.from(dataUrl.split(',')[1], 'base64');
-
-            const result = await ipcRenderer.invoke('save-file', {
-                filePath: framePath,
-                data: buffer
-            });
-
-            if (!result.success) {
-                throw new Error(result.error || `Failed to save frame ${frameNumber}.`);
+        await saveAsPngSequence({
+            filePath,
+            frames,
+            width: mainCanvas.width,
+            height: mainCanvas.height,
+            invoke: ipcRenderer.invoke.bind(ipcRenderer),
+            createCanvas: (width, height) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                return canvas;
             }
-        }
+        });
     }
 
     async saveAsGif(filePath) {
-        return new Promise((resolve, reject) => {
-            // Create a GIF encoder with transparency support
-            const gif = new GIF({
-                workers: 2,
-                quality: 10,
-                width: mainCanvas.width,
-                height: mainCanvas.height,
-                workerScript: './node_modules/gif.js/dist/gif.worker.js',
-                transparent: null, // Enable transparency
-                background: null, // Transparent background
-                dither: false // Disable dithering for better transparency
-            });
-
-            // Add each frame to the GIF
-            for (let i = 0; i < frames.length; i++) {
-                const frame = frames[i];
-                
-                // Create a temporary canvas for this frame
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = mainCanvas.width;
-                tempCanvas.height = mainCanvas.height;
-                const tempCtx = tempCanvas.getContext('2d');
-
-                // Clear to transparent background instead of filling with color
-                tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-                // Draw all visible layers
-                frame.layers.forEach(layer => {
-                    if (layer.visible && !layer.locked) {
-                        tempCtx.drawImage(layer.canvas, 0, 0);
-                    }
-                });
-
-                // Add frame to GIF with delay based on FPS
-                const delay = Math.round(1000 / fps); // Convert FPS to milliseconds
-                gif.addFrame(tempCanvas, { delay: delay });
-            }
-
-            // When GIF is ready, save it
-            gif.on('finished', async (blob) => {
-                try {
-                    // Convert blob to buffer
-                    const arrayBuffer = await blob.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
-
-                    const result = await ipcRenderer.invoke('save-file', {
-                        filePath: filePath,
-                        data: buffer
-                    });
-
-                    if (!result.success) {
-                        reject(new Error(result.error || 'Failed to save GIF file.'));
-                    } else {
-                        resolve();
-                    }
-                } catch (error) {
-                    reject(error);
-                }
-            });
-
-            // Start rendering the GIF
-            gif.render();
+        return saveAsGif({
+            filePath,
+            frames,
+            width: mainCanvas.width,
+            height: mainCanvas.height,
+            fps,
+            invoke: ipcRenderer.invoke.bind(ipcRenderer),
+            createCanvas: (width, height) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                return canvas;
+            },
+            GIF
         });
     }
 
@@ -2572,177 +2455,70 @@ class WASRTK {
 
     async loadProject(filePath) {
         try {
-            console.log('Loading project from:', filePath);
-            
-            // Read project file
             const result = await ipcRenderer.invoke('read-file', filePath);
-            
             if (!result.success) {
                 throw new Error(result.error || 'Failed to read project file.');
             }
 
-            console.log('File read successfully, size:', result.data.length, 'bytes');
+            const projectData = parseProjectJson(result.data);
+            validateProjectData(projectData);
 
-            // Parse JSON data with better error handling
-            let projectData;
-            try {
-                // The data should now be a UTF-8 string from the main process
-                let jsonString = result.data;
-                
-                // Remove BOM (Byte Order Mark) if present
-                if (jsonString.charCodeAt(0) === 0xFEFF) {
-                    jsonString = jsonString.slice(1);
-                    console.log('Removed BOM from JSON string');
-                }
-                
-                // Remove any leading/trailing whitespace
-                jsonString = jsonString.trim();
-                
-                console.log('JSON string length:', jsonString.length);
-                console.log('First 200 characters:', JSON.stringify(jsonString.substring(0, 200)));
-                
-                // Check for common encoding issues
-                console.log('First 10 character codes:');
-                for (let i = 0; i < Math.min(10, jsonString.length); i++) {
-                    console.log(`Position ${i}: '${jsonString[i]}' (code: ${jsonString.charCodeAt(i)})`);
-                }
-                
-                projectData = JSON.parse(jsonString);
-                console.log('JSON parsed successfully');
-            } catch (parseError) {
-                console.error('JSON parse error:', parseError);
-                console.error('Error details:', {
-                    message: parseError.message,
-                    name: parseError.name,
-                    stack: parseError.stack
-                });
-                
-                // Show the problematic area around the error
-                const jsonString = result.data;
-                const position = parseInt(parseError.message.match(/position (\d+)/)?.[1] || '0');
-                const start = Math.max(0, position - 50);
-                const end = Math.min(jsonString.length, position + 50);
-                
-                console.error('Problematic JSON area:');
-                console.error(JSON.stringify(jsonString.substring(start, end)));
-                console.error(' '.repeat(Math.min(50, position - start)) + '^');
-                
-                throw new Error(`Invalid JSON format at position ${position}: ${parseError.message}`);
-            }
-            
-            // Validate project structure
-            if (!projectData.frames || !projectData.layers || !projectData.settings) {
-                console.error('Missing required fields:', {
-                    hasFrames: !!projectData.frames,
-                    hasLayers: !!projectData.layers,
-                    hasSettings: !!projectData.settings
-                });
-                throw new Error('Invalid project file format. Missing required fields: frames, layers, or settings.');
-            }
-
-            console.log('Project structure validated:', {
-                frames: projectData.frames.length,
-                layers: projectData.layers.length,
-                canvas: projectData.canvas
-            });
-
-            // Clear current state
             frames = [];
             layers = [];
             currentFrame = 0;
             currentLayer = 0;
 
-            // Clear any existing reference before loading project
             if (referenceImage || this.screenCaptureInterval) {
                 this.clearReferenceImage();
             }
 
-            // Load canvas settings
             if (projectData.canvas) {
                 mainCanvas.width = projectData.canvas.width;
                 mainCanvas.height = projectData.canvas.height;
                 overlayCanvas.width = projectData.canvas.width;
                 overlayCanvas.height = projectData.canvas.height;
-                
-                // Load transparent background setting
                 hasTransparentBackground = projectData.canvas.transparentBackground || false;
-                
-                // Update canvas wrapper class for transparency
-                // this.updateTransparentBackgroundClass();
             }
 
-            // Load frames and layers with synchronous image loading
-            for (const frameData of projectData.frames) {
-                const frame = {
-                    id: frameData.id,
-                    name: frameData.name,
-                    timestamp: frameData.timestamp,
-                    layers: []
-                };
-
-                for (const layerData of frameData.layers) {
-                    const layer = {
-                        id: layerData.id,
-                        name: layerData.name,
-                        visible: layerData.visible,
-                        locked: layerData.locked,
-                        canvas: document.createElement('canvas')
-                    };
-                    
-                    layer.canvas.width = mainCanvas.width;
-                    layer.canvas.height = mainCanvas.height;
-                    
-                    // Load layer image data synchronously
-                    if (layerData.data) {
-                        try {
-                            await this.loadImageToCanvas(layer.canvas, layerData.data);
-                        } catch (imageError) {
-                            console.warn(`Failed to load image for layer ${layerData.name}:`, imageError);
-                            // Create empty canvas if image loading fails
-                            const ctx = layer.canvas.getContext('2d');
-                            ctx.fillStyle = '#ffffff';
-                            ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
-                        }
-                    } else {
-                        // Create empty canvas if no image data
-                        const ctx = layer.canvas.getContext('2d');
-                        ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
-                    }
-                    
-                    // Apply smoothing settings
-                    this.applyImageSmoothing(layer.canvas.getContext('2d'));
-                    
-                    frame.layers.push(layer);
+            frames = await buildFramesFromProject({
+                projectData,
+                width: mainCanvas.width,
+                height: mainCanvas.height,
+                createCanvas: (width, height) => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    return canvas;
+                },
+                loadImageToCanvas: (canvas, dataUrl) => this.loadImageToCanvas(canvas, dataUrl),
+                applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
+                fillFallbackLayer: (canvas) => {
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
+            });
 
-                frames.push(frame);
-            }
-
-            // Load layer structure
-            layers = projectData.layers.map(layerData => ({
+            layers = projectData.layers.map((layerData) => ({
                 id: layerData.id,
                 name: layerData.name,
                 visible: layerData.visible,
                 locked: layerData.locked
             }));
 
-            // Load settings
-            if (projectData.settings) {
-                fps = projectData.settings.fps || 12;
-                onionSkinningEnabled = projectData.settings.onionSkinningEnabled || false;
-                onionSkinningRange = projectData.settings.onionSkinningRange || 3;
-                referenceOpacity = projectData.settings.referenceOpacity || 0.5;
-                referenceVisible = projectData.settings.referenceVisible || false;
-                antialiasingEnabled = projectData.settings.antialiasingEnabled !== undefined ? projectData.settings.antialiasingEnabled : true;
-                currentTool = projectData.settings.currentTool || 'pen';
-                currentColor = projectData.settings.currentColor || '#000000';
-                currentOpacity = projectData.settings.currentOpacity || 1.0;
-                brushSize = projectData.settings.brushSize || 1;
-                zoom = projectData.settings.zoom || 1;
-            }
+            const settings = normalizeProjectSettings(projectData.settings);
+            fps = settings.fps;
+            onionSkinningEnabled = settings.onionSkinningEnabled;
+            onionSkinningRange = settings.onionSkinningRange;
+            referenceOpacity = settings.referenceOpacity;
+            referenceVisible = settings.referenceVisible;
+            antialiasingEnabled = settings.antialiasingEnabled;
+            currentTool = settings.currentTool;
+            currentColor = settings.currentColor;
+            currentOpacity = settings.currentOpacity;
+            brushSize = settings.brushSize;
+            zoom = settings.zoom;
 
-            // Update UI
             this.updateAllCanvasSmoothing();
             this.renderCurrentFrame();
             this.updateTimeline();
@@ -2752,7 +2528,6 @@ class WASRTK {
             this.updateZoom();
             this.updateStatusBar();
 
-            // Update UI controls
             document.getElementById('fpsSlider').value = fps;
             document.getElementById('fpsValue').textContent = fps;
             document.getElementById('onionSkinningEnabled').checked = onionSkinningEnabled;
@@ -2767,9 +2542,7 @@ class WASRTK {
             document.getElementById('opacitySlider').value = currentOpacity * 100;
             document.getElementById('opacityValue').textContent = Math.round(currentOpacity * 100) + '%';
 
-            // Select the loaded tool
             this.selectTool(currentTool);
-
             console.log('Project loaded successfully:', filePath);
         } catch (error) {
             console.error('Failed to load project:', error);
