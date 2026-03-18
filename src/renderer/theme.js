@@ -9,13 +9,13 @@ const THEME_FIELDS = [
   { key: 'accent', label: 'Accent' },
   { key: 'accent-contrast', label: 'Accent contrast' },
   { key: 'canvas-grid', label: 'Canvas grid' },
-  { key: 'modal-overlay', label: 'Modal overlay', type: 'text' },
+  { key: 'modal-overlay', label: 'Modal overlay', type: 'rgba' },
   { key: 'tooltip-bg', label: 'Tooltip background' },
   { key: 'tooltip-text', label: 'Tooltip text' },
-  { key: 'frame-drag-outline', label: 'Frame drag outline', type: 'text' },
-  { key: 'brush-preview', label: 'Brush preview', type: 'text' },
-  { key: 'brush-preview-pixel', label: 'Brush pixel preview', type: 'text' },
-  { key: 'brush-preview-border', label: 'Brush preview border', type: 'text' }
+  { key: 'frame-drag-outline', label: 'Frame drag outline', type: 'rgba' },
+  { key: 'brush-preview', label: 'Brush preview', type: 'rgba' },
+  { key: 'brush-preview-pixel', label: 'Brush pixel preview', type: 'rgba' },
+  { key: 'brush-preview-border', label: 'Brush preview border', type: 'rgba' }
 ];
 
 function applyTheme(theme) {

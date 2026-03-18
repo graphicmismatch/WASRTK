@@ -950,6 +950,31 @@ select:focus {
     color: var(--text-light);
 }
 
+.theme-rgba-field {
+    padding: 10px;
+    border: 1px solid var(--bg-med);
+    border-radius: 6px;
+    background: var(--bg-light);
+}
+
+.theme-rgba-field input[type="color"] {
+    min-height: 44px;
+    padding: 0;
+}
+
+.theme-alpha-control {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.theme-alpha-control label,
+.theme-alpha-control span {
+    color: var(--text-light);
+    font-size: 12px;
+}
+
 .theme-actions {
     display: flex;
     flex-wrap: wrap;
