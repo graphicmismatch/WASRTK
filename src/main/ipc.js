@@ -42,7 +42,7 @@ function registerScreenCaptureHandlers() {
   });
 }
 
-function registerFileHandlers() {
+function registerFileHandlers({ onThemeUpdated } = {}) {
   ipcMain.handle('save-file', async (event, { filePath, data }) => {
     if (!filePath) {
       return { success: false, canceled: true };
@@ -75,8 +75,20 @@ function registerFileHandlers() {
   });
 
   ipcMain.handle('load-theme-config', async () => loadThemeConfig());
-  ipcMain.handle('save-theme-config', async (event, theme) => saveThemeConfig(theme));
-  ipcMain.handle('reset-theme-config', async () => resetThemeConfig());
+  ipcMain.handle('save-theme-config', async (event, theme) => {
+    const result = saveThemeConfig(theme);
+    if (typeof onThemeUpdated === 'function') {
+      onThemeUpdated(result);
+    }
+    return result;
+  });
+  ipcMain.handle('reset-theme-config', async () => {
+    const result = resetThemeConfig();
+    if (typeof onThemeUpdated === 'function') {
+      onThemeUpdated(result);
+    }
+    return result;
+  });
   ipcMain.handle('get-theme-config-path', async () => getThemeConfigPath());
 }
 
