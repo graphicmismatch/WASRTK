@@ -107,9 +107,9 @@ function buildThemeFieldsMarkup() {
   return THEME_FIELDS.map(({ key, label, type = 'color' }) => {
     if (type === 'rgba') {
       return `
-        <div class="theme-color-field theme-rgba-field">
-          <span>${label}</span>
-          <input type="color" data-theme-key="${key}">
+        <div class="theme-color-field theme-color-card theme-rgba-field">
+          <span class="theme-field-label">${label}</span>
+          <input class="theme-color-input" type="color" data-theme-key="${key}">
           <div class="theme-alpha-control">
             <label for="theme-alpha-${key}">Opacity</label>
             <input id="theme-alpha-${key}" type="range" min="0" max="100" value="100" data-theme-alpha-key="${key}">
@@ -120,9 +120,9 @@ function buildThemeFieldsMarkup() {
     }
 
     return `
-      <label class="theme-color-field">
-        <span>${label}</span>
-        <input type="${type}" data-theme-key="${key}">
+      <label class="theme-color-field theme-color-card">
+        <span class="theme-field-label">${label}</span>
+        <input class="theme-color-input" type="${type}" data-theme-key="${key}">
       </label>
     `;
   }).join('');
