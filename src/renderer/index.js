@@ -1,8 +1,10 @@
 const { WASRTK } = require('./wasrtk');
+const { initializeThemeManager } = require('./theme');
 
 function bootstrap() {
-  document.addEventListener('DOMContentLoaded', () => {
-    new WASRTK();
+  document.addEventListener('DOMContentLoaded', async () => {
+    const app = new WASRTK();
+    await initializeThemeManager(app);
   });
 }
 
