@@ -935,15 +935,28 @@ select:focus {
 .theme-color-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 10px;
     color: var(--text-light);
     font-size: 12px;
 }
 
-.theme-color-field input {
+.theme-color-card {
+    padding: 10px;
+    border: 1px solid var(--bg-med);
+    border-radius: 6px;
+    background: var(--bg-light);
+}
+
+.theme-field-label {
+    color: var(--text-light);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.theme-color-input {
     width: 100%;
-    min-height: 36px;
-    padding: 4px 8px;
+    min-height: 44px;
+    padding: 0;
     border: 1px solid var(--bg-med);
     border-radius: 4px;
     background: var(--bg-light);
@@ -951,15 +964,7 @@ select:focus {
 }
 
 .theme-rgba-field {
-    padding: 10px;
-    border: 1px solid var(--bg-med);
-    border-radius: 6px;
-    background: var(--bg-light);
-}
-
-.theme-rgba-field input[type="color"] {
-    min-height: 44px;
-    padding: 0;
+    gap: 12px;
 }
 
 .theme-alpha-control {
