@@ -165,18 +165,6 @@
                 </div>
 
                 <div class="panel-section">
-                    <h3>Application Theme</h3>
-                    <p class="theme-help">Stored in the OS app config directory and applied on startup.</p>
-                    <div id="themeFields" class="theme-color-grid"></div>
-                    <div class="theme-actions">
-                        <button id="saveThemeBtn" class="btn btn-small btn-primary">Save Theme</button>
-                        <button id="resetThemeBtn" class="btn btn-small btn-secondary">Default Theme</button>
-                        <button id="editThemeConfigBtn" class="btn btn-small btn-secondary">Edit Config</button>
-                    </div>
-                    <p class="theme-config-path"><strong>Config file:</strong> <span id="themeConfigPath"></span></p>
-                </div>
-
-                <div class="panel-section">
                     <h3>Layers</h3>
                     <div class="layer-controls">
                         <button id="addLayerBtn" class="btn btn-small" title="Add Layer">
@@ -373,22 +361,7 @@
         </div>
     </div>
 
-    <div id="themeConfigModal" class="modal">
-        <div class="modal-content theme-modal">
-            <h2>Edit Theme Config</h2>
-            <p class="theme-help">Edit the JSON theme file directly, then save to update the UI instantly.</p>
-            <div class="form-group">
-                <label for="themeConfigEditor">Theme JSON</label>
-                <textarea id="themeConfigEditor" class="theme-config-editor"></textarea>
-            </div>
-            <div class="modal-buttons">
-                <button id="closeThemeConfigBtn" class="btn btn-secondary">Cancel</button>
-                <button id="saveThemeConfigFileBtn" class="btn btn-primary">Save Config</button>
-            </div>
-        </div>
-    </div>
-
     <script src="./node_modules/gif.js/dist/gif.js"></script>
     <script src="renderer.js"></script>
 </body>
-</html> 
+</html>

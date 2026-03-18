@@ -1,7 +1,9 @@
+const path = require('path');
 const { BrowserWindow, dialog } = require('electron');
 
 function createWindowController({ getWindowOptions, loadFile }) {
   let mainWindow = null;
+  let themeWindow = null;
 
   function getMainWindow() {
     return mainWindow;
@@ -17,6 +19,16 @@ function createWindowController({ getWindowOptions, loadFile }) {
 
   function menuAction(channel, payload) {
     return () => sendToRenderer(channel, payload);
+  }
+
+  function sendThemeUpdate(payload) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('theme-config-updated', payload);
+    }
+
+    if (themeWindow && !themeWindow.isDestroyed()) {
+      themeWindow.webContents.send('theme-config-updated', payload);
+    }
   }
 
   async function showOpenDialogAndSend({ filters, channel }) {
@@ -70,11 +82,48 @@ function createWindowController({ getWindowOptions, loadFile }) {
     }
   }
 
+  function openThemeSettingsWindow() {
+    if (themeWindow && !themeWindow.isDestroyed()) {
+      themeWindow.focus();
+      return themeWindow;
+    }
+
+    themeWindow = new BrowserWindow({
+      ...getWindowOptions(),
+      width: 900,
+      height: 780,
+      minWidth: 700,
+      minHeight: 640,
+      parent: mainWindow || undefined,
+      title: 'WASRTK Theme Settings',
+      show: false
+    });
+
+    themeWindow.removeMenu();
+    themeWindow.loadFile(path.resolve(__dirname, '../../theme-window.html'));
+
+    themeWindow.once('ready-to-show', () => {
+      themeWindow.show();
+    });
+
+    themeWindow.on('closed', () => {
+      themeWindow = null;
+    });
+
+    if (process.argv.includes('--dev')) {
+      themeWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+
+    return themeWindow;
+  }
+
   return {
     createWindow,
     getMainWindow,
     sendToRenderer,
+    sendThemeUpdate,
     menuAction,
+    openThemeSettingsWindow,
     showOpenDialogAndSend,
     showSaveDialogAndSend
   };
