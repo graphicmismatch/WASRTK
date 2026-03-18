@@ -31,6 +31,7 @@ let zoom = 1;
 let lastMousePos = null; // Store last mouse position for line interpolation
 let antialiasingEnabled = true; // Global antialiasing toggle
 let fillTolerance = 0; // Tolerance for flood fill
+let draggedFrameIndex = null;
 
 // Panning state
 let isPanning = false;
@@ -372,6 +373,8 @@ class WASRTK {
         // Timeline events
         document.getElementById('addFrameBtn').addEventListener('click', () => this.addFrame());
         document.getElementById('duplicateFrameBtn').addEventListener('click', () => this.duplicateFrame());
+        document.getElementById('moveFrameLeftBtn').addEventListener('click', () => this.moveFrameLeft());
+        document.getElementById('moveFrameRightBtn').addEventListener('click', () => this.moveFrameRight());
         document.getElementById('deleteFrameBtn').addEventListener('click', () => this.deleteFrame());
 
         // Animation controls
@@ -1119,12 +1122,7 @@ class WASRTK {
         if (frames.length <= 1) return;
         
         frames.splice(currentFrame, 1);
-        
-        // Update frame IDs
-        frames.forEach((frame, index) => {
-            frame.id = index;
-            frame.name = `Frame ${index + 1}`;
-        });
+        this.reindexFrames();
         
         if (currentFrame >= frames.length) {
             currentFrame = frames.length - 1;
@@ -1132,6 +1130,39 @@ class WASRTK {
         
         this.selectFrame(currentFrame);
         this.updateTimeline();
+    }
+
+    reindexFrames() {
+        frames.forEach((frame, index) => {
+            frame.id = index;
+            frame.name = `Frame ${index + 1}`;
+        });
+    }
+
+    moveFrame(fromIndex, toIndex) {
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= frames.length || toIndex >= frames.length) {
+            return;
+        }
+
+        this.saveStructureState();
+
+        const [movedFrame] = frames.splice(fromIndex, 1);
+        frames.splice(toIndex, 0, movedFrame);
+        this.reindexFrames();
+        currentFrame = toIndex;
+        this.renderCurrentFrame();
+        this.updateTimeline();
+        this.updateStatusBar();
+    }
+
+    moveFrameLeft() {
+        if (currentFrame <= 0) return;
+        this.moveFrame(currentFrame, currentFrame - 1);
+    }
+
+    moveFrameRight() {
+        if (currentFrame >= frames.length - 1) return;
+        this.moveFrame(currentFrame, currentFrame + 1);
     }
 
     selectFrame(frameIndex) {
@@ -1374,6 +1405,41 @@ class WASRTK {
             const frameElement = document.createElement('div');
             frameElement.className = `frame-item ${index === currentFrame ? 'active' : ''}`;
             frameElement.dataset.frame = index;
+            frameElement.draggable = true;
+            frameElement.addEventListener('dragstart', (event) => {
+                draggedFrameIndex = index;
+                frameElement.classList.add('dragging');
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', String(index));
+                }
+            });
+            frameElement.addEventListener('dragend', () => {
+                draggedFrameIndex = null;
+                frameElement.classList.remove('dragging');
+                timeline.querySelectorAll('.frame-item').forEach((item) => item.classList.remove('drag-over'));
+            });
+            frameElement.addEventListener('dragover', (event) => {
+                if (draggedFrameIndex === null || draggedFrameIndex === index) {
+                    return;
+                }
+                event.preventDefault();
+                frameElement.classList.add('drag-over');
+                if (event.dataTransfer) {
+                    event.dataTransfer.dropEffect = 'move';
+                }
+            });
+            frameElement.addEventListener('dragleave', () => {
+                frameElement.classList.remove('drag-over');
+            });
+            frameElement.addEventListener('drop', (event) => {
+                event.preventDefault();
+                frameElement.classList.remove('drag-over');
+                if (draggedFrameIndex === null || draggedFrameIndex === index) {
+                    return;
+                }
+                this.moveFrame(draggedFrameIndex, index);
+            });
             // Create a canvas for the preview
             const previewCanvas = document.createElement('canvas');
             previewCanvas.width = 50;
@@ -1871,6 +1937,7 @@ class WASRTK {
             type: 'structure',
             frames: framesCopy,
             layers: JSON.parse(JSON.stringify(layers)),
+            currentFrame: currentFrame,
             currentLayer: currentLayer
         });
 
@@ -1920,12 +1987,14 @@ class WASRTK {
                 type: 'structure',
                 frames: this.cloneFrames(frames),
                 layers: JSON.parse(JSON.stringify(layers)),
+                currentFrame: currentFrame,
                 currentLayer: currentLayer
             };
             this.redoStack.push(currentStateForRedo);
 
             frames = stateToRestore.frames;
             layers = stateToRestore.layers;
+            currentFrame = Math.min(stateToRestore.currentFrame ?? currentFrame, frames.length - 1);
             currentLayer = stateToRestore.currentLayer;
         }
 
@@ -1962,12 +2031,14 @@ class WASRTK {
                 type: 'structure',
                 frames: this.cloneFrames(frames),
                 layers: JSON.parse(JSON.stringify(layers)),
+                currentFrame: currentFrame,
                 currentLayer: currentLayer
             };
             this.undoStack.push(currentStateForUndo);
             
             frames = stateToRestore.frames;
             layers = stateToRestore.layers;
+            currentFrame = Math.min(stateToRestore.currentFrame ?? currentFrame, frames.length - 1);
             currentLayer = stateToRestore.currentLayer;
         }
 
