@@ -1585,7 +1585,7 @@ class WASRTK {
             const refStatus = document.createElement('span');
             refStatus.id = 'referenceStatus';
             refStatus.textContent = `Ref: ${Math.round(referenceScale * 100)}%`;
-            refStatus.title = 'Reference image loaded. Ctrl+click to drag, Ctrl+/- to scale, Ctrl+R to reset';
+            refStatus.title = 'Reference image loaded. Ctrl+click to drag, Ctrl+/- to scale, Ctrl+R to re-center without changing zoom';
             statusRight.appendChild(refStatus);
         }
     }

@@ -34,9 +34,11 @@ function resetReferencePosition(app, api, canvas) {
   const image = api.getImage();
   if (!image) return;
 
-  api.setPosition((canvas.width - image.width) / 2, (canvas.height - image.height) / 2);
-  api.setScale(1.0);
-  api.setUserModified(false);
+  const scaledWidth = image.width * api.getScale();
+  const scaledHeight = image.height * api.getScale();
+
+  api.setPosition((canvas.width - scaledWidth) / 2, (canvas.height - scaledHeight) / 2);
+  api.setUserModified(true);
   app.updateReferencePreview();
   app.renderCurrentFrame();
 }
