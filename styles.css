@@ -434,7 +434,14 @@ body {
 .timeline-controls {
     display: flex;
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.timeline-help {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+    font-size: 12px;
 }
 
 .timeline {
@@ -449,13 +456,23 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 5px;
-    cursor: pointer;
+    cursor: grab;
     padding: 8px;
     border: 2px solid var(--bg-med);
     border-radius: 6px;
     background-color: var(--bg-light);
     transition: all 0.2s ease;
     min-width: 60px;
+}
+
+.frame-item.dragging {
+    opacity: 0.45;
+    cursor: grabbing;
+}
+
+.frame-item.drag-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.35);
 }
 
 .frame-item:hover {

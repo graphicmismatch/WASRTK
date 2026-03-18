@@ -77,7 +77,7 @@ Get started with WASRTK in minutes! This guide will walk you through creating yo
 
 ### Working with References
 - **Ctrl/Cmd + Click** to drag the reference image
-- **Ctrl/Cmd + R** to reset the reference position
+- **Ctrl/Cmd + R** to re-center the reference without changing its zoom
 - Toggle visibility with the **Eye** button
 
 ## 🎨 Layer System
