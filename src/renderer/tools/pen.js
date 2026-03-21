@@ -62,10 +62,21 @@ module.exports = {
       return;
     }
 
+    if (isSquareBrush) {
+      const size = app.getBrushSize();
+      const offset = size / 2;
+      const points = app.getInterpolatedStrokePoints(x1, y1, x2, y2, Math.max(0.5, size / 4));
+
+      points.forEach(({ x, y }) => {
+        ctx.fillRect(x - offset, y - offset, size, size);
+      });
+      return;
+    }
+
     ctx.strokeStyle = app.getCurrentColor();
     ctx.lineWidth = app.getBrushSize();
-    ctx.lineCap = isSquareBrush ? 'butt' : 'round';
-    ctx.lineJoin = isSquareBrush ? 'miter' : 'round';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
