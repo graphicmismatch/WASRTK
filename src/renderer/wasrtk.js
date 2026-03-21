@@ -340,7 +340,7 @@ class WASRTK {
             this.startDrawing(e);
         });
         
-        mainCanvas.addEventListener('mousemove', (e) => {
+        const handleCanvasInteractionMove = (e) => {
             // Handle reference image dragging
             if (isDraggingReference && referenceImage && referenceVisible) {
                 const mousePos = this.screenToCanvas(e.clientX, e.clientY);
@@ -356,6 +356,19 @@ class WASRTK {
             }
             
             this.draw(e);
+        };
+
+        mainCanvas.addEventListener('mousemove', handleCanvasInteractionMove);
+        document.addEventListener('mousemove', (e) => {
+            if (!isDrawing && !isDraggingReference) {
+                return;
+            }
+
+            if (e.target === mainCanvas) {
+                return;
+            }
+
+            handleCanvasInteractionMove(e);
         });
         
         mainCanvas.addEventListener('mouseup', (e) => {
@@ -367,6 +380,25 @@ class WASRTK {
             }
             this.stopDrawing();
         });
+
+        document.addEventListener('mouseup', (e) => {
+            if (e.button !== 0) {
+                return;
+            }
+
+            if (e.target === mainCanvas) {
+                return;
+            }
+
+            if (isDraggingReference) {
+                isDraggingReference = false;
+                lastMousePos = null;
+                document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
+                return;
+            }
+
+            this.stopDrawing();
+        });
         
         mainCanvas.addEventListener('mouseleave', (e) => {
             if (isDraggingReference) {
@@ -375,7 +407,6 @@ class WASRTK {
                 document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
                 return;
             }
-            this.stopDrawing();
         });
 
         // Mouse position tracking
