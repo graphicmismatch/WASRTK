@@ -2,18 +2,24 @@ module.exports = {
   id: 'eraser',
   saveStateOnStart: true,
   onStart(app, { coords }) {
-    app.drawPoint(coords.x, coords.y, false);
+    app.createStrokeLayer();
+    app.drawPoint(coords.x, coords.y, true);
   },
   onDraw(app, { currentCoords, lastMousePos }) {
     if (lastMousePos) {
-      app.drawLine(lastMousePos.x, lastMousePos.y, currentCoords.x, currentCoords.y, false);
+      app.drawLine(lastMousePos.x, lastMousePos.y, currentCoords.x, currentCoords.y, true);
       return;
     }
 
-    app.drawPoint(currentCoords.x, currentCoords.y, false);
+    app.drawPoint(currentCoords.x, currentCoords.y, true);
+  },
+  onStop(app) {
+    app.commitStrokeLayer({
+      compositeOperation: 'destination-out'
+    });
   },
   drawPoint(app, { ctx, coords }) {
-    ctx.globalCompositeOperation = 'destination-out';
+    ctx.globalCompositeOperation = 'source-over';
 
     const isSquareBrush = app.getBrushShape() === 'square';
 
@@ -41,7 +47,7 @@ module.exports = {
     ctx.fill();
   },
   drawLine(app, { ctx, x1, y1, x2, y2 }) {
-    ctx.globalCompositeOperation = 'destination-out';
+    ctx.globalCompositeOperation = 'source-over';
 
     const isSquareBrush = app.getBrushShape() === 'square';
 
