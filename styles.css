@@ -232,6 +232,29 @@ body {
     text-align: right;
 }
 
+
+.brush-shape-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.brush-shape-control label {
+    color: var(--text-light);
+    font-size: 14px;
+}
+
+.brush-shape-control select {
+    flex: 1;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    border: 1px solid var(--bg-med);
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
 .antialiasing-control {
     margin-top: 10px;
     padding: 8px 0;

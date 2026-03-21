@@ -15,10 +15,19 @@ module.exports = {
   drawPoint(app, { ctx, coords }) {
     ctx.globalCompositeOperation = 'destination-out';
 
+    const isSquareBrush = app.getBrushShape() === 'square';
+
     if (!app.isAntialiasingEnabled()) {
       const size = Math.max(1, Math.round(app.getBrushSize()));
       const offset = Math.floor(size / 2);
       ctx.clearRect(Math.round(coords.x) - offset, Math.round(coords.y) - offset, size, size);
+      return;
+    }
+
+    if (isSquareBrush) {
+      const size = app.getBrushSize();
+      const offset = size / 2;
+      ctx.clearRect(coords.x - offset, coords.y - offset, size, size);
       return;
     }
 
@@ -34,6 +43,8 @@ module.exports = {
   drawLine(app, { ctx, x1, y1, x2, y2 }) {
     ctx.globalCompositeOperation = 'destination-out';
 
+    const isSquareBrush = app.getBrushShape() === 'square';
+
     if (!app.isAntialiasingEnabled()) {
       const points = app.getPixelPerfectLinePoints(x1, y1, x2, y2);
       const size = Math.max(1, Math.round(app.getBrushSize()));
@@ -47,8 +58,8 @@ module.exports = {
 
     ctx.strokeStyle = 'rgba(0,0,0,1)';
     ctx.lineWidth = app.getBrushSize();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = isSquareBrush ? 'butt' : 'round';
+    ctx.lineJoin = isSquareBrush ? 'miter' : 'round';
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);

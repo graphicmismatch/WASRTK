@@ -20,10 +20,19 @@ module.exports = {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = app.getCurrentColor();
 
+    const isSquareBrush = app.getBrushShape() === 'square';
+
     if (!app.isAntialiasingEnabled()) {
       const size = Math.max(1, Math.round(app.getBrushSize()));
       const offset = Math.floor(size / 2);
       ctx.fillRect(Math.round(coords.x) - offset, Math.round(coords.y) - offset, size, size);
+      return;
+    }
+
+    if (isSquareBrush) {
+      const size = app.getBrushSize();
+      const offset = size / 2;
+      ctx.fillRect(coords.x - offset, coords.y - offset, size, size);
       return;
     }
 
@@ -39,6 +48,8 @@ module.exports = {
   drawLine(app, { ctx, x1, y1, x2, y2 }) {
     ctx.globalCompositeOperation = 'source-over';
 
+    const isSquareBrush = app.getBrushShape() === 'square';
+
     if (!app.isAntialiasingEnabled()) {
       ctx.fillStyle = app.getCurrentColor();
       const points = app.getPixelPerfectLinePoints(x1, y1, x2, y2);
@@ -53,8 +64,8 @@ module.exports = {
 
     ctx.strokeStyle = app.getCurrentColor();
     ctx.lineWidth = app.getBrushSize();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = isSquareBrush ? 'butt' : 'round';
+    ctx.lineJoin = isSquareBrush ? 'miter' : 'round';
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
