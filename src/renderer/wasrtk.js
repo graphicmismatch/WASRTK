@@ -128,7 +128,7 @@ class WASRTK {
         this.applyImageSmoothing(strokeCtx);
     }
 
-    commitStrokeLayer() {
+    commitStrokeLayer({ compositeOperation = 'source-over' } = {}) {
         if (!strokeCanvas || !strokeCtx) {
             return;
         }
@@ -139,7 +139,7 @@ class WASRTK {
             const ctx = layer.canvas.getContext('2d');
             ctx.save();
             ctx.globalAlpha = currentOpacity;
-            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalCompositeOperation = compositeOperation;
             ctx.drawImage(strokeCanvas, 0, 0);
             ctx.restore();
         }
@@ -340,7 +340,7 @@ class WASRTK {
             this.startDrawing(e);
         });
         
-        mainCanvas.addEventListener('mousemove', (e) => {
+        const handleCanvasInteractionMove = (e) => {
             // Handle reference image dragging
             if (isDraggingReference && referenceImage && referenceVisible) {
                 const mousePos = this.screenToCanvas(e.clientX, e.clientY);
@@ -356,6 +356,19 @@ class WASRTK {
             }
             
             this.draw(e);
+        };
+
+        mainCanvas.addEventListener('mousemove', handleCanvasInteractionMove);
+        document.addEventListener('mousemove', (e) => {
+            if (!isDrawing && !isDraggingReference) {
+                return;
+            }
+
+            if (e.target === mainCanvas) {
+                return;
+            }
+
+            handleCanvasInteractionMove(e);
         });
         
         mainCanvas.addEventListener('mouseup', (e) => {
@@ -367,6 +380,25 @@ class WASRTK {
             }
             this.stopDrawing();
         });
+
+        document.addEventListener('mouseup', (e) => {
+            if (e.button !== 0) {
+                return;
+            }
+
+            if (e.target === mainCanvas) {
+                return;
+            }
+
+            if (isDraggingReference) {
+                isDraggingReference = false;
+                lastMousePos = null;
+                document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
+                return;
+            }
+
+            this.stopDrawing();
+        });
         
         mainCanvas.addEventListener('mouseleave', (e) => {
             if (isDraggingReference) {
@@ -375,7 +407,6 @@ class WASRTK {
                 document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
                 return;
             }
-            this.stopDrawing();
         });
 
         // Mouse position tracking
@@ -755,8 +786,8 @@ class WASRTK {
     }
 
     drawPoint(x, y, useStrokeCtx = false) {
-        // Only use strokeCtx for pen tool
-        const ctx = (useStrokeCtx && currentTool === "pen" && strokeCtx) ? strokeCtx : (() => {
+        const useStrokeLayer = useStrokeCtx && strokeCtx && (currentTool === "pen" || currentTool === "eraser");
+        const ctx = useStrokeLayer ? strokeCtx : (() => {
             const frame = frames[currentFrame];
             const layer = frame.layers[currentLayer];
             if (!layer || layer.locked) return null;
@@ -765,12 +796,12 @@ class WASRTK {
         if (!ctx) return;
         ctx.save();
         this.applyImageSmoothing(ctx);
-        ctx.globalAlpha = (useStrokeCtx && currentTool === "pen") ? 1.0 : currentOpacity;
+        ctx.globalAlpha = useStrokeLayer ? 1.0 : currentOpacity;
         const coords = antialiasingEnabled ? { x, y } : this.roundToPixel(x, y);
         const tool = this.getCurrentToolConfig();
         tool?.drawPoint?.(this, { ctx, coords, useStrokeCtx });
         ctx.restore();
-        if (useStrokeCtx && currentTool === "pen") {
+        if (useStrokeLayer) {
             this.showStrokePreview();
         } else {
             this.renderCurrentFrame();
@@ -833,9 +864,9 @@ class WASRTK {
     }
 
     drawLine(x1, y1, x2, y2, useStrokeCtx = false) {
-        // Only use strokeCtx for pen tool
+        const useStrokeLayer = useStrokeCtx && strokeCtx && (currentTool === "pen" || currentTool === "eraser");
         if (antialiasingEnabled) {
-            const ctx = (useStrokeCtx && currentTool === "pen" && strokeCtx) ? strokeCtx : (() => {
+            const ctx = useStrokeLayer ? strokeCtx : (() => {
                 const frame = frames[currentFrame];
                 const layer = frame.layers[currentLayer];
                 if (!layer || layer.locked) return null;
@@ -844,11 +875,11 @@ class WASRTK {
             if (!ctx) return;
             ctx.save();
             this.applyImageSmoothing(ctx);
-            ctx.globalAlpha = (useStrokeCtx && currentTool === "pen") ? 1.0 : currentOpacity;
+            ctx.globalAlpha = useStrokeLayer ? 1.0 : currentOpacity;
             const tool = this.getCurrentToolConfig();
             tool?.drawLine?.(this, { ctx, x1, y1, x2, y2, useStrokeCtx });
             ctx.restore();
-            if (useStrokeCtx && currentTool === "pen") {
+            if (useStrokeLayer) {
                 this.showStrokePreview();
             } else {
                 this.renderCurrentFrame();
@@ -868,7 +899,7 @@ class WASRTK {
                 if (e2 > -dy) { err -= dy; x += sx; }
                 if (e2 < dx) { err += dx; y += sy; }
             }
-            if (useStrokeCtx && currentTool === "pen") {
+            if (useStrokeLayer) {
                 this.showStrokePreview();
             } else {
                 this.renderCurrentFrame();
