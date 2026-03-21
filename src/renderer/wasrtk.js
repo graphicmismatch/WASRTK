@@ -330,6 +330,7 @@ class WASRTK {
                     referenceY += mousePos.y - lastMousePos.y;
                     lastMousePos = mousePos;
                     userModifiedReference = true; // Mark as user modified
+                    this.updateReferencePreview();
                     this.renderCurrentFrame();
                 }
                 return;
