@@ -17,10 +17,10 @@ module.exports = {
 
     const isSquareBrush = app.getBrushShape() === 'square';
 
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+
     if (!app.isAntialiasingEnabled()) {
-      const size = Math.max(1, Math.round(app.getBrushSize()));
-      const offset = Math.floor(size / 2);
-      ctx.clearRect(Math.round(coords.x) - offset, Math.round(coords.y) - offset, size, size);
+      app.drawPixelPerfectBrushStamp(ctx, coords.x, coords.y, app.getBrushSize(), app.getBrushShape());
       return;
     }
 
@@ -45,13 +45,13 @@ module.exports = {
 
     const isSquareBrush = app.getBrushShape() === 'square';
 
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+
     if (!app.isAntialiasingEnabled()) {
       const points = app.getPixelPerfectLinePoints(x1, y1, x2, y2);
-      const size = Math.max(1, Math.round(app.getBrushSize()));
-      const offset = Math.floor(size / 2);
 
       points.forEach(({ x, y }) => {
-        ctx.clearRect(x - offset, y - offset, size, size);
+        app.drawPixelPerfectBrushStamp(ctx, x, y, app.getBrushSize(), app.getBrushShape());
       });
       return;
     }
