@@ -1,146 +1,124 @@
-# 🚀 Quick Start Guide - WASRTK
+# WASRTK Quick Start
 
-Get started with WASRTK in minutes! This guide will walk you through creating your first pixel art animation.
+This guide walks through the current workflow implemented in the repo.
 
-## 📋 Prerequisites
+## 1. Install and run
 
-- Node.js (version 16 or higher)
-- npm (comes with Node.js)
+```bash
+git clone https://github.com/graphicmismatch/WASRTK.git
+cd WASRTK
+npm install
+npm start
+```
 
-## 🚀 Installation
+If you want DevTools on launch, run `npm run dev`.
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/wasrtk.git
-   cd wasrtk
-   ```
+## 2. Create a project
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+1. Start the app.
+2. Open `File > New Project` or press `Ctrl/Cmd+N`.
+3. Set width and height.
+4. Choose a background color or enable `Transparent Background`.
+5. Click `Create`.
 
-3. **Start the application:**
-   ```bash
-   npm start
-   ```
+Notes:
 
-## 🎨 First Steps
+- The new project dialog allows sizes from `1` to `4096` pixels in each dimension.
+- The canvas opens at `256x256` by default.
 
-### 1. Create a New Project
-- Press `Ctrl/Cmd + N` or go to **File → New Project**
-- Set your canvas dimensions (default: 256x256, max: 4096x4096)
-- Choose a background color
-- Click **Create**
+## 3. Draw on the canvas
 
-### 2. Choose Your Tools
-- **Pen Tool**: Freehand drawing with smooth or pixel-perfect lines
-- **Brush Tool**: Smooth drawing with configurable brush size
-- **Line Tool**: Straight lines
-- **Rectangle Tool**: Rectangles and squares
-- **Circle Tool**: Circles and ellipses
-- **Fill Tool**: Flood fill areas with adjustable tolerance
-- **Eraser Tool**: Erase pixels
-- **Eyedropper Tool**: Pick colors from the canvas
+Available tools in the current UI:
 
-### 3. Adjust Your Brush
-- Use the **Brush Size** slider (1-50px)
-- Pick colors from the **Color Picker** or **Color Presets** (64 colors)
-- Adjust **Opacity** (0-100%)
-- Toggle **Antialiasing** for smooth vs pixel-perfect drawing
+- Pen
+- Line
+- Rectangle
+- Circle
+- Fill
+- Eraser
 
-## 🎬 Animation Basics
+Key controls:
 
-### Creating Frames
-- Click the **+** button in the timeline or press **F**
-- Each frame represents one moment in your animation
-- Use **D** to duplicate the current frame
-- Use **Delete** to remove unwanted frames
+- Brush size: `1` to `50`
+- Brush shape: `circle` or `square` for pen, line, and eraser
+- Opacity: `0%` to `100%`
+- Fill tolerance: `0` to `255`
+- Antialiasing toggle for smooth vs pixel-perfect drawing
 
-### Onion Skinning
-- Enable **Onion Skinning** to see previous/next frames
-- Adjust the **Range** to control how many frames are visible
-- This helps maintain consistency across frames
+Canvas navigation:
 
-### Playing Your Animation
-- Press **Space** to play
-- Press **Escape** to stop
-- Adjust **FPS** (frames per second) for playback speed
+- `Ctrl/Cmd + mouse wheel` zooms around the pointer
+- Middle mouse drag pans the canvas
+- The zoom controls support `10%` to `2000%`
 
-## 🖼️ Reference Images
+## 4. Build an animation
 
-### Loading References
-- Click the **Image** button to load a reference image
-- Use **Screen Share** to capture desktop/window content
-- Adjust **Opacity** to make the reference more or less visible
-- Use **Zoom** to scale the reference image
+Timeline actions:
 
-### Working with References
-- **Ctrl/Cmd + Click** to drag the reference image
-- **Ctrl/Cmd + R** to re-center the reference without changing its zoom
-- Toggle visibility with the **Eye** button
+- Add frame: toolbar button or `F`
+- Duplicate frame: toolbar button or `D`
+- Delete frame: toolbar button or `Delete`
+- Reorder frames: drag thumbnails or use the arrow buttons
+- Play/pause: toolbar button or `Space`
 
-## 🎨 Layer System
+Playback:
 
-### Managing Layers
-- Use the **+** button to add new layers
-- Click the **Eye** icon to show/hide layers
-- Use **Up/Down** arrows to reorder layers
-- **Flatten** layers to merge them
+- FPS is adjustable from `1` to `60`
+- Onion skinning can be enabled with a range from `1` to `10`
 
-### Layer Best Practices
-- Keep line art and colors on separate layers
-- Use background layers for reference
-- Layer locking is supported in the data structure (UI toggle coming soon)
+## 5. Use layers
 
-## 🖱️ Canvas Navigation
+- Add layers with the `+` button
+- Toggle visibility with the eye icon
+- Select the active layer from the layer list
+- Move layers up or down with the arrow buttons
+- Flatten the current layer into the one below it
 
-### Zooming
-- **Ctrl/Cmd + Mouse Wheel**: Zoom in/out (10%-2000%)
-- **Zoom Slider**: Quick zoom adjustment
-- **Zoom Input**: Precise zoom percentage
-- **Reset Zoom**: Return to 100%
+Notes:
 
-### Panning
-- **Middle Mouse Button**: Pan around the canvas
-- The canvas automatically centers on startup
+- Each frame contains its own raster canvas for every layer.
+- Visibility changes are propagated across all frames.
 
-## 💡 Pro Tips
+## 6. Add reference material
 
-### Drawing Tips
-- **Use Layers**: Separate line art, colors, and effects
-- **Save Often**: Use Ctrl/Cmd + S regularly
-- **Reference Images**: Perfect for rotoscoping and tracing
-- **Antialiasing**: Toggle based on your art style
-- **Fill Tolerance**: Adjust for more or less precise flood filling
+Reference options:
 
-### Animation Tips
-- **Start Simple**: Begin with keyframes, add in-betweens
-- **Onion Skinning**: Essential for smooth animations
-- **Consistent FPS**: Stick to 12, 24, or 30 FPS
-- **Frame Management**: Use descriptive frame names
+- Load an image from disk
+- Capture a screen or window
 
-### Performance Tips
-- **Canvas Size**: Smaller canvases = faster performance
-- **Layer Count**: Fewer layers = better performance
-- **Zoom Level**: Lower zoom = faster rendering
-- **Frame Count**: More frames = more memory usage
+Reference controls:
 
-## 🆘 Troubleshooting
+- Opacity: `0%` to `100%`
+- Zoom: `10%` to `500%`
+- Click the preview to re-center on a point
+- `Ctrl/Cmd + click` and drag on the canvas to move the reference
+- `Ctrl/Cmd + R` resets the reference position
 
-### Common Issues
-- **Blurry Drawing**: Toggle antialiasing off for pixel-perfect mode
-- **Slow Performance**: Reduce canvas size or layer count
-- **Brush Preview Offset**: Check zoom level and canvas position
-- **Animation Lag**: Lower FPS or reduce frame count
-- **Reference Not Loading**: Check file format (PNG, JPG, GIF, BMP supported)
+When screen capture is active, the reference image is refreshed on an interval while preserving manual placement and scale changes.
 
-### Getting Help
-- Check the main README for detailed documentation
-- Review keyboard shortcuts for quick access
-- Experiment with different tools and settings
-- Use reference images for complex drawings
+## 7. Save your work
 
----
+Project save/load:
 
-**Happy Drawing! 🎨✨** 
+- Save project: `Ctrl/Cmd+S`
+- Load project: `Ctrl/Cmd+Shift+O`
+- Project files use the `.wasrtk` extension
+
+Export:
+
+- Save animation: `Ctrl/Cmd+Shift+S`
+- Supported exports are PNG sequence and GIF
+
+PNG sequence export writes files like `name-0001.png`, `name-0002.png`, and so on.
+
+## 8. Customize the theme
+
+Open `View > Theme Settings` or press `Ctrl/Cmd+Alt+T`.
+
+The theme window lets you:
+
+- Change the app color tokens
+- Reset to the bundled default theme
+- Edit and save the raw JSON theme file
+
+The theme config is stored in the Electron user data directory as `theme.json`.

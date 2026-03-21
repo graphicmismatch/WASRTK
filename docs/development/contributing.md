@@ -1,196 +1,59 @@
-# Contributing to WASRTK
+# Contributing
 
-## Overview
+## Workflow
 
-Thank you for your interest in contributing to WASRTK! This document provides guidelines for contributors.
+1. Fork the repository.
+2. Create a branch for one focused change.
+3. Make the change.
+4. Validate the affected workflow manually.
+5. Open a pull request with a clear description of behavior changes.
 
-> **New to open source or JavaScript?** We have a guide just for you! Check out our [Guide for First-Time Contributors](./first-time-contributors.md) to get started.
+## What to include in a PR
 
-## Getting Started
+- What changed
+- Why it changed
+- How you verified it
+- Any known gaps or follow-up work
 
-### Prerequisites
-- Node.js 16.0.0 or higher
-- Git
-- A code editor (VS Code recommended)
-- Basic knowledge of JavaScript, HTML, and CSS
+## Coding expectations
 
-### Setting Up Development Environment
-1. Fork the repository
-2. Clone your fork locally
-3. Install dependencies: `npm install`
-4. Start development server: `npm run dev`
+- Keep changes scoped.
+- Prefer small helper modules over growing `wasrtk.js` further when practical.
+- Preserve existing project file compatibility unless the change is explicitly a format change.
+- Update docs when behavior, shortcuts, menus, or file formats change.
 
-## Contribution Guidelines
+## Documentation expectations
 
-### Code Style
+Documentation should reflect the code that ships in this repo today.
 
-#### JavaScript
-- Use 2 spaces for indentation
-- Use single quotes for strings
-- Always use semicolons
-- Use camelCase for variables and functions
-- Use PascalCase for classes
+Check these areas when behavior changes:
 
-#### HTML
-- Use 2 spaces for indentation
-- Use lowercase for tags and attributes
-- Use double quotes for attributes
-- Include alt attributes for images
+- `README.md`
+- `QUICKSTART.md`
+- `docs/api/keyboard-shortcuts.md`
+- `docs/api/file-formats.md`
+- `docs/api/ipc-communication.md`
+- Feature and implementation pages relevant to the change
 
-#### CSS
-- Use 2 spaces for indentation
-- Use kebab-case for class names
-- Group related properties together
+## Manual verification guidance
 
-### Commit Messages
-Follow the conventional commits format:
-```
-type(scope): description
-```
+Because the repo has no automated tests, include a short manual verification list. Common checks:
 
-Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
+- Launch with `npm start` or `npm run dev`
+- Draw on the canvas with the affected tool
+- Save and reload a project
+- Export a PNG sequence or GIF when export code changed
+- Exercise screen capture or reference image behavior when relevant
+- Open Theme Settings when theme-related code changed
 
-Examples:
-```
-feat(tools): add new brush tool
-fix(timeline): resolve frame deletion issue
-docs(api): update drawing tools documentation
-```
+## Areas of ownership
 
-### Pull Request Process
+- `src/main/`: Electron shell, menus, dialogs, IPC registration, theme persistence
+- `src/renderer/`: editor behavior, serialization, exporters, theme sync, references
+- `index.html` and `styles.css`: layout and interaction affordances
 
-1. **Create a Feature Branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+## Notes on compatibility
 
-2. **Make Your Changes**
-   - Write clear, readable code
-   - Add comments for complex logic
-   - Test your changes thoroughly
-   - Update documentation if needed
-
-3. **Test Your Changes**
-   - Run the application: `npm start`
-   - Test all related functionality
-   - Check for console errors
-
-4. **Commit and Push**
-   ```bash
-   git add .
-   git commit -m "feat(tools): add new brush tool"
-   git push origin feature/your-feature-name
-   ```
-
-5. **Create a Pull Request**
-   - Use a clear, descriptive title
-   - Include a detailed description
-   - Reference any related issues
-   - Add screenshots for UI changes
-
-### Pull Request Template
-
-```markdown
-## Description
-Brief description of the changes made.
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Documentation update
-- [ ] Code refactoring
-- [ ] Performance improvement
-
-## Testing
-- [ ] Tested on Windows
-- [ ] Tested on macOS
-- [ ] Tested on Linux
-- [ ] All existing tests pass
-
-## Checklist
-- [ ] Code follows project style guidelines
-- [ ] Self-review completed
-- [ ] Documentation updated
-- [ ] No console errors
-
-## Screenshots (if applicable)
-Add screenshots for UI changes.
-
-## Related Issues
-Closes #123
-```
-
-## Development Workflow
-
-### Feature Development
-1. **Plan**: Document requirements and design
-2. **Implement**: Write code following guidelines
-3. **Test**: Thoroughly test functionality
-4. **Document**: Update relevant documentation
-5. **Review**: Create pull request for review
-
-### Bug Fixes
-1. **Reproduce**: Confirm the bug exists
-2. **Debug**: Find the root cause
-3. **Fix**: Implement minimal fix
-4. **Test**: Verify the fix works
-5. **Document**: Add tests to prevent regression
-
-## Testing Guidelines
-
-### Manual Testing
-- Test all related functionality
-- Verify UI/UX is intuitive
-- Check for performance issues
-- Test on different operating systems
-- Verify keyboard shortcuts work
-
-## Documentation Standards
-
-### Code Documentation
-- Use JSDoc for functions and classes
-- Include parameter types and descriptions
-- Document complex algorithms
-- Add inline comments for tricky logic
-
-### User Documentation
-- Write clear, concise descriptions
-- Include step-by-step instructions
-- Add screenshots for complex features
-- Keep documentation up to date
-
-## Areas for Contribution
-
-### High Priority
-- Bug fixes and performance improvements
-- Documentation updates and clarifications
-- UI/UX improvements
-- Test coverage expansion
-
-### Medium Priority
-- New drawing tools
-- Export format additions
-- Animation feature enhancements
-- Accessibility improvements
-
-### Low Priority
-- Code refactoring and optimization
-- Additional file format support
-- Advanced animation features
-- Plugin system development
-
-## Getting Help
-
-- **Issues**: Use GitHub issues for bug reports and feature requests
-- **Discussions**: Use GitHub discussions for questions and ideas
-- **Code Review**: Ask for help during pull request reviews
-- **Documentation**: Check existing documentation first
-
-Thank you for contributing to WASRTK! 
+- `.wasrtk` files are JSON-based and store raster layer data as PNG data URLs.
+- Theme configuration is stored separately in the user data directory and is not part of project files.
+- Reference images and live capture sources are runtime-only and are not embedded in saved projects.

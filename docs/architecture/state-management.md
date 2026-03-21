@@ -1,293 +1,141 @@
 # State Management
 
-## Overview
+WASRTK does not use an external state library. The editor keeps mutable state in module-level variables inside `src/renderer/wasrtk.js` and updates the UI imperatively.
 
-This document describes WASRTK's state management architecture. For high-level architecture information, see [Architecture Overview](./overview.md).
+## Core renderer state
 
-## State Architecture
+### Tool and brush state
 
-### State Hierarchy
-```mermaid
-graph TB
-    A[Application State] --> B[Tool State]
-    A --> C[Canvas State]
-    A --> D[Animation State]
-    A --> E[Layer State]
-    A --> F[Reference State]
-    A --> G[UI State]
-    A --> H[History State]
-```
+- `currentTool`
+- `currentColor`
+- `currentOpacity`
+- `brushSize`
+- `brushShape`
+- `antialiasingEnabled`
+- `fillTolerance`
 
-## Global State Structure
+### Animation state
 
-### Core State Variables
-```javascript
-// Tool State
-let currentTool = 'pen';
-let currentColor = '#000000';
-let currentOpacity = 1.0;
-let brushSize = 1;
-let fillTolerance = 0;
+- `frames`
+- `layers`
+- `currentFrame`
+- `currentLayer`
+- `fps`
+- `isAnimating`
+- `onionSkinningEnabled`
+- `onionSkinningRange`
 
-// Canvas State
-let zoom = 1;
-let antialiasingEnabled = true;
-let isDrawing = false;
+### Reference state
 
-// Animation State
-let frames = [];
-let currentFrame = 0;
-let isAnimating = false;
-let fps = 12;
-let onionSkinningEnabled = false;
+- `referenceImage`
+- `referenceVisible`
+- `referenceOpacity`
+- `referenceX`
+- `referenceY`
+- `referenceScale`
+- `userModifiedReference`
+- `screenCaptureInterval` on the app instance
 
-// Layer State
-let layers = [];
-let currentLayer = 0;
+### Canvas interaction state
 
-// Reference State
-let referenceImage = null;
-let referenceVisible = false;
-let referenceOpacity = 0.5;
-```
+- `zoom`
+- `isDrawing`
+- `lastMousePos`
+- `isDraggingReference`
+- `isPanning`
+- `panStartPos`
+- `panStartScroll`
+- `draggedFrameIndex`
 
-## Tool State Management
+### Project state
 
-### Tool Selection State
-```javascript
-selectTool(tool) {
-    currentTool = tool;
-    
-    // Update UI
-    document.querySelectorAll('.tool-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    document.querySelector(`[data-tool="${tool}"]`).classList.add('active');
-    
-    this.updateStatusBar();
-}
-```
+- `hasTransparentBackground`
 
-### Brush State Management
-```javascript
-setBrushSize(size) {
-    brushSize = size;
-    document.getElementById('brushSizeValue').textContent = size + 'px';
-    this.updateBrushPreview();
-}
+## Data structures
 
-setColor(color) {
-    currentColor = color;
-    this.updateBrushPreview();
-}
+### Frame
 
-setOpacity(opacity) {
-    currentOpacity = opacity / 100;
-    this.updateBrushPreview();
-}
-```
-
-## Animation State Management
-
-### Frame State Management
-```javascript
-setCurrentFrame(frameIndex) {
-    if (frameIndex >= 0 && frameIndex < frames.length) {
-        currentFrame = frameIndex;
-        this.renderCurrentFrame();
-        this.updateTimeline();
+```js
+{
+  id,
+  name,
+  timestamp,
+  layers: [
+    {
+      id,
+      name,
+      visible,
+      locked,
+      canvas
     }
-}
-
-addFrame() {
-    const newFrame = {
-        id: frames.length,
-        name: `Frame ${frames.length + 1}`,
-        layers: this.cloneLayerStructure(),
-        timestamp: Date.now()
-    };
-    frames.push(newFrame);
-    this.setCurrentFrame(frames.length - 1);
+  ]
 }
 ```
 
-### Animation Playback State
-```javascript
-playAnimation() {
-    if (frames.length <= 1) return;
-    
-    isAnimating = true;
-    const frameDelay = 1000 / fps;
-    
-    animationInterval = setInterval(() => {
-        currentFrame = (currentFrame + 1) % frames.length;
-        this.renderCurrentFrame();
-        this.updateTimeline();
-    }, frameDelay);
-}
+### Layer metadata
 
-stopAnimation() {
-    isAnimating = false;
-    if (animationInterval) {
-        clearInterval(animationInterval);
-        animationInterval = null;
-    }
+The top-level `layers` array stores per-layer metadata shared across frames:
+
+```js
+{
+  id,
+  name,
+  visible,
+  locked
 }
 ```
 
-## Layer State Management
+Each frame also stores its own raster canvas for that same layer position.
 
-### Layer Creation and Management
-```javascript
-addLayer(name = `Layer ${layers.length + 1}`) {
-    const newLayer = {
-        id: layers.length,
-        name: name,
-        visible: true,
-        locked: false,
-        canvas: this.createLayerCanvas()
-    };
-    
-    layers.push(newLayer);
-    
-    // Add layer to all frames
-    frames.forEach(frame => {
-        frame.layers.push(this.cloneLayer(newLayer));
-    });
-    
-    this.updateLayerPanel();
-    this.renderCurrentFrame();
-}
+## Update model
 
-toggleLayerVisibility(layerIndex) {
-    layers[layerIndex].visible = !layers[layerIndex].visible;
-    
-    // Update visibility in all frames
-    frames.forEach(frame => {
-        frame.layers[layerIndex].visible = layers[layerIndex].visible;
-    });
-    
-    this.updateLayerPanel();
-    this.renderCurrentFrame();
-}
-```
+State changes usually follow this pattern:
 
-## History State Management
+1. Mutate the relevant variable or array.
+2. Re-render the main canvas if raster output changed.
+3. Refresh affected UI pieces such as timeline, layer list, brush preview, zoom controls, or status bar.
 
-### Undo/Redo System
-```javascript
-class HistoryManager {
-    constructor() {
-        this.undoStack = [];
-        this.redoStack = [];
-        this.maxHistorySize = 50;
-    }
-    
-    saveState() {
-        const state = {
-            frames: this.cloneFrames(frames),
-            currentFrame: currentFrame,
-            currentLayer: currentLayer,
-            timestamp: Date.now()
-        };
-        
-        this.undoStack.push(state);
-        
-        if (this.undoStack.length > this.maxHistorySize) {
-            this.undoStack.shift();
-        }
-        
-        this.redoStack = [];
-    }
-    
-    undo() {
-        if (this.undoStack.length > 0) {
-            const currentState = {
-                frames: this.cloneFrames(frames),
-                currentFrame: currentFrame,
-                currentLayer: currentLayer,
-                timestamp: Date.now()
-            };
-            
-            this.redoStack.push(currentState);
-            const previousState = this.undoStack.pop();
-            this.restoreState(previousState);
-        }
-    }
-    
-    restoreState(state) {
-        frames = state.frames;
-        currentFrame = state.currentFrame;
-        currentLayer = state.currentLayer;
-        
-        this.renderCurrentFrame();
-        this.updateUI();
-    }
-}
-```
+There is no centralized reducer or event bus in the renderer.
 
-## UI State Management
+## Undo and redo
 
-### Status Bar Updates
-```javascript
-updateStatusBar() {
-    const statusBar = document.getElementById('statusBar');
-    
-    const toolInfo = `Tool: ${currentTool.charAt(0).toUpperCase() + currentTool.slice(1)}`;
-    const brushInfo = `Brush: ${brushSize}px`;
-    const colorInfo = `Color: ${currentColor}`;
-    const frameInfo = `Frame: ${currentFrame + 1}/${frames.length}`;
-    const layerInfo = `Layer: ${layers[currentLayer]?.name || 'None'}`;
-    const zoomInfo = `Zoom: ${Math.round(zoom * 100)}%`;
-    
-    statusBar.textContent = `${toolInfo} | ${brushInfo} | ${colorInfo} | ${frameInfo} | ${layerInfo} | ${zoomInfo}`;
-}
-```
+Undo history uses two stacks:
 
-### Panel State Updates
-```javascript
-updateUI() {
-    updateToolPanel();
-    updateTimeline();
-    updateLayerPanel();
-    updateStatusBar();
-    updateBrushPreview();
-}
-```
+- `undoStack`
+- `redoStack`
 
-## State Persistence
+Two state record types are used:
 
-### Project State Serialization
-```javascript
-serializeProjectState() {
-    return {
-        frames: frames.map(frame => ({
-            id: frame.id,
-            name: frame.name,
-            layers: frame.layers.map(layer => ({
-                id: layer.id,
-                name: layer.name,
-                visible: layer.visible,
-                locked: layer.locked,
-                imageData: layer.canvas.toDataURL()
-            })),
-            timestamp: frame.timestamp
-        })),
-        metadata: {
-            version: '1.0.0',
-            canvasWidth: mainCanvas.width,
-            canvasHeight: mainCanvas.height,
-            fps: fps,
-            currentFrame: currentFrame,
-            currentLayer: currentLayer,
-            currentTool: currentTool,
-            currentColor: currentColor,
-            brushSize: brushSize,
-            opacity: currentOpacity,
-            zoom: zoom
-        }
-    };
-}
-```
+- `draw`: stores `ImageData` for one frame/layer canvas
+- `structure`: stores cloned frame canvases plus layer metadata and selection indices
 
-This state management architecture provides a robust foundation for maintaining application consistency and supporting undo/redo operations. 
+That split keeps drawing undo cheaper than full-structure snapshots while still supporting frame/layer operations.
+
+## Persistence boundaries
+
+Saved project files include:
+
+- canvas dimensions and transparency flag
+- frames and layers
+- per-layer PNG data URLs
+- editor settings such as tool, color, opacity, brush size, zoom, FPS, onion skinning, and reference visibility/opacity
+
+Saved project files do not include:
+
+- active reference image pixels
+- live capture source state
+- theme configuration
+
+## Tradeoffs
+
+Advantages:
+
+- Very direct to debug
+- Easy for small features to hook into existing state
+- Low abstraction cost
+
+Costs:
+
+- `wasrtk.js` carries a lot of responsibility
+- State mutations and UI updates can drift apart if a method forgets a refresh step
+- Shared mutable globals make larger refactors harder

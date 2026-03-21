@@ -1,44 +1,42 @@
-# WASRTK Technical Documentation
+# WASRTK Documentation
 
-Welcome to the technical documentation for WASRTK (Woah, Another Shitty Rotoscoping ToolKit).
+This directory documents the code and behavior that exist in the current repository.
 
-## 📚 Documentation Overview
+## Start here
 
-### Core Documentation
-- **[Architecture Overview](./architecture/overview.md)** - System architecture and design patterns
-- **[Component Architecture](./architecture/components.md)** - Detailed component breakdown
-- **[Data Flow](./architecture/data-flow.md)** - Data flow patterns and algorithms
-- **[State Management](./architecture/state-management.md)** - State management patterns
+- [Project README](../README.md)
+- [Quick Start](../QUICKSTART.md)
+- [Development Setup](./development/setup.md)
 
-### Implementation
-- **[Main Process](./implementation/main-process.md)** - Electron main process
-- **[Renderer Process](./implementation/renderer-process.md)** - Frontend rendering and UI logic
+## Architecture
 
-### Features & API
-- **[Drawing Tools](./features/drawing-tools.md)** - Tool specifications
-- **[Timeline System](./features/timeline-system.md)** - Animation controls
-- **[IPC Communication](./api/ipc-communication.md)** - Inter-process communication
-- **[Keyboard Shortcuts](./api/keyboard-shortcuts.md)** - Shortcut reference
-- **[File Formats](./api/file-formats.md)** - Project and export formats
+- [Overview](./architecture/overview.md)
+- [Components](./architecture/components.md)
+- [Data Flow](./architecture/data-flow.md)
+- [State Management](./architecture/state-management.md)
 
-### Development
-- **[Development Setup](./development/setup.md)** - Environment setup
-- **[Contributing Guidelines](./development/contributing.md)** - How to contribute
-- **[Canvas Specifications](./specs/canvas-specs.md)** - Technical constraints
+## Implementation
 
-## 🚀 Getting Started
+- [Main Process](./implementation/main-process.md)
+- [Renderer Process](./implementation/renderer-process.md)
 
-For quick setup and basic usage, see:
-- **[Main README](../README.md)** - Project overview
-- **[Quick Start Guide](../QUICKSTART.md)** - Step-by-step tutorial
+## Features
 
-For developers:
-- Start with [Development Setup](./development/setup.md)
-- Read [Architecture Overview](./architecture/overview.md)
+- [Drawing Tools](./features/drawing-tools.md)
+- [Timeline System](./features/timeline-system.md)
 
----
+## API and formats
 
-**Last Updated**: June 2025
+- [Keyboard Shortcuts](./api/keyboard-shortcuts.md)
+- [IPC Communication](./api/ipc-communication.md)
+- [File Formats](./api/file-formats.md)
 
-**Version**: 1.0.0  
-**Maintainer**: graphicmismatch
+## Development
+
+- [Setup](./development/setup.md)
+- [Contributing](./development/contributing.md)
+- [First-Time Contributors](./development/first-time-contributors.md)
+
+## Specs
+
+- [Canvas Specifications](./specs/canvas-specs.md)

@@ -1,138 +1,65 @@
 # Development Setup
 
-## Overview
-
-This guide covers setting up a development environment for WASRTK. WASRTK is built with Electron and uses modern web technologies for the frontend.
-
 ## Prerequisites
 
-### Required Software
-- **Node.js**: Version 16.0.0 or higher
-- **npm**: Comes with Node.js (version 6 or higher)
-- **Git**: For version control
+- Node.js with npm
+- A desktop environment supported by Electron
 
-### System Requirements
-- **Operating System**: Windows 10+, macOS 10.14+, or Linux
-- **RAM**: Minimum 4GB, recommended 8GB+
-- **Storage**: At least 1GB free space
+The project currently depends on:
 
-## Installation Steps
+- `electron@13.1.7`
+- `electron-builder@22.11.7`
+- `gif.js@0.2.0`
 
-### 1. Install Node.js
-Download and install Node.js from [nodejs.org](https://nodejs.org/):
+## Install
 
 ```bash
-# Verify installation
-node --version
-npm --version
-```
-
-### 2. Clone the Repository
-```bash
-# Clone the repository
-git clone https://github.com/your-username/WASRTK.git
-
-# Navigate to project directory
+git clone https://github.com/graphicmismatch/WASRTK.git
 cd WASRTK
-```
-
-### 3. Install Dependencies
-```bash
-# Install Node.js dependencies
 npm install
 ```
 
-### 4. Verify Setup
+## Run locally
+
 ```bash
-# Run the application in development mode
 npm start
 ```
 
-## Development Environment Configuration
+Useful variants:
 
-### VS Code Setup
+- `npm run dev` launches with DevTools
+- `npm run build` packages the app
+- `npm run build:win`
+- `npm run build:mac`
+- `npm run build:linux`
 
-#### Recommended Extensions
-```json
-{
-    "recommendations": [
-        "ms-vscode.vscode-typescript-next",
-        "esbenp.prettier-vscode",
-        "ms-vscode.vscode-eslint",
-        "ms-vscode.vscode-javascript-debug"
-    ]
-}
-```
+## Project structure
 
-#### Workspace Settings
-Create `.vscode/settings.json`:
-```json
-{
-    "editor.formatOnSave": true,
-    "editor.tabSize": 2,
-    "editor.insertSpaces": true,
-    "files.trimTrailingWhitespace": true,
-    "files.insertFinalNewline": true
-}
-```
+- `main.js`: Electron bootstrap
+- `renderer.js`: renderer bootstrap
+- `index.html`: main editor UI
+- `theme-window.html`: theme editor UI
+- `src/main/constants.js`: dialog filters, window defaults, thumbnail size
+- `src/main/window.js`: main window and theme window control
+- `src/main/menu.js`: application menus and accelerators
+- `src/main/ipc.js`: filesystem, theme, and screen-source IPC handlers
+- `src/main/theme-config.js`: theme persistence and sanitization
+- `src/renderer/wasrtk.js`: main editor class and app state
+- `src/renderer/project-io.js`: project serialization and hydration
+- `src/renderer/exporters.js`: PNG sequence and GIF export
+- `src/renderer/tools/`: tool modules loaded dynamically at runtime
+- `src/renderer/reference/`: reference image and screen-capture workflows
 
-## Project Structure
+## Development workflow
 
-### Directory Layout
-```
-WASRTK/
-├── assets/                 # Application assets
-├── docs/                  # Documentation
-├── samples/              # Sample projects
-├── main.js              # Electron main process
-├── renderer.js          # Frontend application logic
-├── index.html           # Main HTML file
-├── styles.css           # Application styles
-└── package.json         # Project dependencies
-```
+1. Install dependencies with `npm install`.
+2. Launch the app with `npm start` or `npm run dev`.
+3. Make changes.
+4. Validate manually in the running app.
+5. Build with `npm run build` if packaging behavior is affected.
 
-## Development Workflow
+## Current constraints
 
-### Running the Application
-```bash
-# Development mode (with DevTools)
-npm run dev
-
-# Production mode
-npm start
-
-# Build for distribution
-npm run build
-```
-
-### Common Commands
-```bash
-# Install dependencies
-npm install
-
-# Run tests
-npm test
-
-# Lint code
-npm run lint
-
-# Format code
-npm run format
-
-# Build application
-npm run build
-```
-
-## Troubleshooting
-
-### Common Issues
-1. **Node.js version**: Ensure you're using Node.js 16.0.0 or higher
-2. **Dependencies**: Run `npm install` if you encounter module errors
-3. **Permissions**: Check file permissions on your system
-
-### Getting Help
-- Check the [Contributing Guidelines](./contributing.md)
-- Review the [Architecture Overview](../architecture/overview.md)
-- Examine the [Implementation Details](../implementation/)
-
-This setup guide provides everything needed to start developing with WASRTK.
+- There is no automated test suite in this repo.
+- Documentation and manual verification are part of the normal change workflow.
+- The renderer runs with `nodeIntegration: true` and `contextIsolation: false`, so code changes should be reviewed with that trust model in mind.
