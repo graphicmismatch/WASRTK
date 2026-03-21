@@ -23,6 +23,59 @@ function repositionReferenceFromPreview(event, app, api) {
   app.renderCurrentFrame();
 }
 
+function updateViewportIndicator(api, previewImage) {
+  const indicator = document.getElementById('referenceViewportIndicator');
+  const image = api.getImage();
+  if (!indicator || !image || !api.isVisible() || previewImage.style.display === 'none') {
+    if (indicator) indicator.style.display = 'none';
+    return;
+  }
+
+  const containerRect = document.getElementById('referenceScrollContainer').getBoundingClientRect();
+  const imageRect = previewImage.getBoundingClientRect();
+  if (!containerRect.width || !containerRect.height || !imageRect.width || !imageRect.height) {
+    indicator.style.display = 'none';
+    return;
+  }
+
+  const viewport = api.getViewport();
+  const scale = api.getScale();
+  if (!viewport || !scale) {
+    indicator.style.display = 'none';
+    return;
+  }
+
+  const imageLeft = api.getX();
+  const imageTop = api.getY();
+  const imageRight = imageLeft + (image.width * scale);
+  const imageBottom = imageTop + (image.height * scale);
+  const viewportRight = viewport.left + viewport.width;
+  const viewportBottom = viewport.top + viewport.height;
+
+  const visibleLeft = Math.max(viewport.left, imageLeft);
+  const visibleTop = Math.max(viewport.top, imageTop);
+  const visibleRight = Math.min(viewportRight, imageRight);
+  const visibleBottom = Math.min(viewportBottom, imageBottom);
+
+  if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
+    indicator.style.display = 'none';
+    return;
+  }
+
+  const imageDisplayLeft = imageRect.left - containerRect.left;
+  const imageDisplayTop = imageRect.top - containerRect.top;
+  const indicatorLeft = imageDisplayLeft + (((visibleLeft - imageLeft) / (image.width * scale)) * imageRect.width);
+  const indicatorTop = imageDisplayTop + (((visibleTop - imageTop) / (image.height * scale)) * imageRect.height);
+  const indicatorWidth = ((visibleRight - visibleLeft) / (image.width * scale)) * imageRect.width;
+  const indicatorHeight = ((visibleBottom - visibleTop) / (image.height * scale)) * imageRect.height;
+
+  indicator.style.display = 'block';
+  indicator.style.left = `${indicatorLeft}px`;
+  indicator.style.top = `${indicatorTop}px`;
+  indicator.style.width = `${Math.max(indicatorWidth, 2)}px`;
+  indicator.style.height = `${Math.max(indicatorHeight, 2)}px`;
+}
+
 function bindReferenceSettingsEvents(app, api) {
   document.getElementById('toggleReferenceBtn').addEventListener('click', () => app.toggleReference());
   document.getElementById('resetReferenceBtn').addEventListener('click', () => {
@@ -54,6 +107,7 @@ function toggleReference(app, api) {
   document.getElementById('toggleReferenceBtn').innerHTML = api.isVisible()
     ? '<i class="fas fa-eye-slash"></i>'
     : '<i class="fas fa-eye"></i>';
+  app.updateReferencePreview();
   app.renderCurrentFrame();
   app.updateStatusBar();
 }
@@ -82,6 +136,7 @@ function clearReferenceImage(app, api) {
   uiImage.src = '';
   uiImage.style.display = 'none';
   uiImage.style.transform = 'scale(1)';
+  document.getElementById('referenceViewportIndicator').style.display = 'none';
 
   const zoomSlider = document.getElementById('referenceZoom');
   zoomSlider.value = 100;
@@ -94,10 +149,14 @@ function clearReferenceImage(app, api) {
 }
 
 function updateReferencePreview(api) {
-  const image = api.getImage();
-  if (!image) return;
-
   const uiImage = document.getElementById('referenceImage');
+  const indicator = document.getElementById('referenceViewportIndicator');
+  const image = api.getImage();
+  if (!image || !api.isVisible()) {
+    if (indicator) indicator.style.display = 'none';
+    return;
+  }
+
   const zoomPercentage = Math.round(api.getScale() * 100);
   const zoomSlider = document.getElementById('referenceZoom');
 
@@ -107,6 +166,8 @@ function updateReferencePreview(api) {
   uiImage.style.maxWidth = '100%';
   uiImage.style.maxHeight = '100%';
   uiImage.style.objectFit = 'contain';
+
+  updateViewportIndicator(api, uiImage);
 }
 
 module.exports = {

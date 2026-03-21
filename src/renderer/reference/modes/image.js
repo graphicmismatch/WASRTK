@@ -25,6 +25,7 @@ function loadReferenceFromBlob(app, api, blob, sourceName) {
         document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
       }
 
+      app.updateReferencePreview();
       app.renderCurrentFrame();
       app.updateStatusBar();
     };
@@ -56,6 +57,7 @@ function updateReferenceImageOnly(app, api, blob) {
       zoomSlider.value = Math.round(api.getScale() * 100);
       document.getElementById('referenceZoomValue').textContent = `${Math.round(api.getScale() * 100)}%`;
 
+      app.updateReferencePreview();
       app.renderCurrentFrame();
       app.updateStatusBar();
     };
