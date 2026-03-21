@@ -594,6 +594,10 @@ class WASRTK {
         } else {
             toleranceSection.style.display = 'none';
         }
+
+        const brushShapeControl = document.querySelector('.brush-shape-control');
+        const brushShapeTools = ['pen', 'line', 'eraser'];
+        brushShapeControl.style.display = brushShapeTools.includes(tool) ? 'flex' : 'none';
         
         // Hide brush preview if switching away from pen/eraser
         if (tool !== 'pen' && tool !== 'eraser') {
@@ -1077,12 +1081,9 @@ class WASRTK {
 
     drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
         const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
-        
-        const size = Math.max(1, Math.round(brushSize));
-        const offset = Math.floor(size / 2);
 
         points.forEach(({ x, y }) => {
-            ctx.fillRect(x - offset, y - offset, size, size);
+            this.drawPixelPerfectBrushStamp(ctx, x, y, brushSize, brushShape);
         });
     }
     
