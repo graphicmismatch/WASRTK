@@ -87,6 +87,15 @@ class WASRTK {
             setUserModified: (modified) => { userModifiedReference = modified; },
             getCanvasWidth: () => mainCanvas.width,
             getCanvasHeight: () => mainCanvas.height,
+            getViewport: () => {
+                const canvasWrapper = document.querySelector('.canvas-wrapper');
+                return {
+                    left: canvasWrapper.scrollLeft / zoom,
+                    top: canvasWrapper.scrollTop / zoom,
+                    width: canvasWrapper.clientWidth / zoom,
+                    height: canvasWrapper.clientHeight / zoom
+                };
+            },
             clear: () => {
                 referenceImage = null;
                 referenceVisible = false;
@@ -463,8 +472,10 @@ class WASRTK {
             }
         });
 
+        const canvasWrapper = document.querySelector('.canvas-wrapper');
+
         // Also add wheel listener to canvas wrapper for better coverage
-        document.querySelector('.canvas-wrapper').addEventListener('wheel', (e) => {
+        canvasWrapper.addEventListener('wheel', (e) => {
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? -1 : 1;
@@ -474,12 +485,15 @@ class WASRTK {
             }
         });
 
+        canvasWrapper.addEventListener('scroll', () => {
+            this.updateReferencePreview();
+        });
+
         // Undo/Redo buttons
         document.getElementById('undoBtn').addEventListener('click', () => this.undo());
         document.getElementById('redoBtn').addEventListener('click', () => this.redo());
 
         // Panning with middle mouse button
-        const canvasWrapper = document.querySelector('.canvas-wrapper');
         canvasWrapper.addEventListener('mousedown', (e) => {
             if (e.button === 1) { // Middle mouse button
                 isPanning = true;
@@ -1655,6 +1669,7 @@ class WASRTK {
         const zoomPercentage = Math.round(zoom * 100);
         document.getElementById('zoomInput').value = zoomPercentage;
         document.getElementById('zoomSlider').value = zoomPercentage;
+        this.updateReferencePreview();
         
         // Update brush size preview to reflect new zoom level
         const brushPreview = document.getElementById('canvasBrushPreview');
@@ -1695,6 +1710,7 @@ class WASRTK {
         referenceVisible = true;
         document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
 
+        this.updateReferencePreview();
         this.renderCurrentFrame();
         this.updateStatusBar();
     }
