@@ -27,7 +27,7 @@ function buildToolsSubmenu(menuAction) {
   }));
 }
 
-function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindow }) {
+function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindow, openThemeSettingsWindow }) {
   const template = [
     {
       label: 'File',
@@ -74,6 +74,8 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
         { role: 'resetZoom', label: 'Actual Size' },
         { role: 'zoomIn', label: 'Zoom In' },
         { role: 'zoomOut', label: 'Zoom Out' },
+        { type: 'separator' },
+        { label: 'Theme Settings', accelerator: 'CmdOrCtrl+Alt+T', click: openThemeSettingsWindow },
         { type: 'separator' },
         { role: 'togglefullscreen', label: 'Toggle Full Screen' }
       ]

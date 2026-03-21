@@ -14,13 +14,14 @@ app.whenReady().then(() => {
   windowController.createWindow();
 
   registerScreenCaptureHandlers();
-  registerFileHandlers();
+  registerFileHandlers({ onThemeUpdated: windowController.sendThemeUpdate });
 
   const menuTemplate = createMenuTemplate({
     menuAction: windowController.menuAction,
     openAndSend: windowController.showOpenDialogAndSend,
     saveAndSend: windowController.showSaveDialogAndSend,
-    getMainWindow: windowController.getMainWindow
+    getMainWindow: windowController.getMainWindow,
+    openThemeSettingsWindow: windowController.openThemeSettingsWindow
   });
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
