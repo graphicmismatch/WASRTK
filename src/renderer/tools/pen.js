@@ -20,6 +20,13 @@ module.exports = {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = app.getCurrentColor();
 
+    if (!app.isAntialiasingEnabled()) {
+      const size = Math.max(1, Math.round(app.getBrushSize()));
+      const offset = Math.floor(size / 2);
+      ctx.fillRect(Math.round(coords.x) - offset, Math.round(coords.y) - offset, size, size);
+      return;
+    }
+
     if (app.getBrushSize() === 1) {
       ctx.fillRect(coords.x, coords.y, 1, 1);
       return;
@@ -31,6 +38,19 @@ module.exports = {
   },
   drawLine(app, { ctx, x1, y1, x2, y2 }) {
     ctx.globalCompositeOperation = 'source-over';
+
+    if (!app.isAntialiasingEnabled()) {
+      ctx.fillStyle = app.getCurrentColor();
+      const points = app.getPixelPerfectLinePoints(x1, y1, x2, y2);
+      const size = Math.max(1, Math.round(app.getBrushSize()));
+      const offset = Math.floor(size / 2);
+
+      points.forEach(({ x, y }) => {
+        ctx.fillRect(x - offset, y - offset, size, size);
+      });
+      return;
+    }
+
     ctx.strokeStyle = app.getCurrentColor();
     ctx.lineWidth = app.getBrushSize();
     ctx.lineCap = 'round';

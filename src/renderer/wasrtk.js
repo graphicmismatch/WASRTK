@@ -107,6 +107,10 @@ class WASRTK {
         return brushSize;
     }
 
+    isAntialiasingEnabled() {
+        return antialiasingEnabled;
+    }
+
     clearOverlay() {
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     }
@@ -146,6 +150,11 @@ class WASRTK {
         const rect = mainCanvas.getBoundingClientRect();
         const canvasX = (screenX - rect.left) / zoom;
         const canvasY = (screenY - rect.top) / zoom;
+
+        if (antialiasingEnabled) {
+            return { x: canvasX, y: canvasY };
+        }
+
         return this.roundToPixel(canvasX, canvasY);
     }
 
@@ -655,6 +664,8 @@ class WASRTK {
             ctx.stroke();
         }
         
+        this.applyImageSmoothing(ctx);
+
         // Draw brush preview
         ctx.fillStyle = currentColor;
         ctx.globalAlpha = currentOpacity;
@@ -671,8 +682,6 @@ class WASRTK {
             ctx.fill();
         }
         
-        // Disable smoothing for preview
-        this.applyImageSmoothing(ctx);
     }
 
     // Drawing methods
@@ -965,43 +974,46 @@ class WASRTK {
         this.renderCurrentFrame();
     }
     
-    drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
-        const dx = Math.abs(x2 - x1);
-        const dy = Math.abs(y2 - y1);
-        const sx = x1 < x2 ? 1 : -1;
-        const sy = y1 < y2 ? 1 : -1;
+    getPixelPerfectLinePoints(x1, y1, x2, y2) {
+        let startX = Math.round(x1);
+        let startY = Math.round(y1);
+        const endX = Math.round(x2);
+        const endY = Math.round(y2);
+        const points = [];
+        const dx = Math.abs(endX - startX);
+        const dy = Math.abs(endY - startY);
+        const sx = startX < endX ? 1 : -1;
+        const sy = startY < endY ? 1 : -1;
         let err = dx - dy;
-        let x = x1;
-        let y = y1;
-        
-        // For brush size > 1, we need to avoid overlapping
-        // Use a single stroke operation with proper width
-        if (brushSize > 1) {
-            ctx.lineWidth = brushSize;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
-            return;
-        }
-        
+
         while (true) {
-            // For brush size 1, draw single pixels
-            ctx.fillRect(x, y, 1, 1);
-            
-            if (Math.round(x) === Math.round(x2) && Math.round(y) === Math.round(y2)) break;
+            points.push({ x: startX, y: startY });
+
+            if (startX === endX && startY === endY) {
+                return points;
+            }
+
             const e2 = 2 * err;
             if (e2 > -dy) {
                 err -= dy;
-                x += sx;
+                startX += sx;
             }
             if (e2 < dx) {
                 err += dx;
-                y += sy;
+                startY += sy;
             }
         }
+    }
+
+    drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
+        const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
+        
+        const size = Math.max(1, Math.round(brushSize));
+        const offset = Math.floor(size / 2);
+
+        points.forEach(({ x, y }) => {
+            ctx.fillRect(x - offset, y - offset, size, size);
+        });
     }
     
     drawPixelPerfectCircleWithFillRect(ctx, cx, cy, rx, ry) {
