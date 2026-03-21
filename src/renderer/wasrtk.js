@@ -1051,6 +1051,30 @@ class WASRTK {
         }
     }
 
+    drawPixelPerfectBrushStamp(ctx, centerX, centerY, size, shape = 'square') {
+        const stampSize = Math.max(1, Math.round(size));
+        const stampCenterX = Math.round(centerX);
+        const stampCenterY = Math.round(centerY);
+        const offset = Math.floor(stampSize / 2);
+
+        if (shape !== 'circle' || stampSize === 1) {
+            ctx.fillRect(stampCenterX - offset, stampCenterY - offset, stampSize, stampSize);
+            return;
+        }
+
+        const radius = stampSize / 2;
+
+        for (let y = 0; y < stampSize; y++) {
+            for (let x = 0; x < stampSize; x++) {
+                const pixelCenterX = x - offset + 0.5;
+                const pixelCenterY = y - offset + 0.5;
+                if ((pixelCenterX * pixelCenterX) + (pixelCenterY * pixelCenterY) <= radius * radius) {
+                    ctx.fillRect(stampCenterX - offset + x, stampCenterY - offset + y, 1, 1);
+                }
+            }
+        }
+    }
+
     drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
         const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
         
