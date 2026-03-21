@@ -87,15 +87,6 @@ class WASRTK {
             setUserModified: (modified) => { userModifiedReference = modified; },
             getCanvasWidth: () => mainCanvas.width,
             getCanvasHeight: () => mainCanvas.height,
-            getViewport: () => {
-                const canvasWrapper = document.querySelector('.canvas-wrapper');
-                return {
-                    left: canvasWrapper.scrollLeft / zoom,
-                    top: canvasWrapper.scrollTop / zoom,
-                    width: canvasWrapper.clientWidth / zoom,
-                    height: canvasWrapper.clientHeight / zoom
-                };
-            },
             clear: () => {
                 referenceImage = null;
                 referenceVisible = false;
@@ -485,9 +476,6 @@ class WASRTK {
             }
         });
 
-        canvasWrapper.addEventListener('scroll', () => {
-            this.updateReferencePreview();
-        });
 
         // Undo/Redo buttons
         document.getElementById('undoBtn').addEventListener('click', () => this.undo());
@@ -1669,7 +1657,6 @@ class WASRTK {
         const zoomPercentage = Math.round(zoom * 100);
         document.getElementById('zoomInput').value = zoomPercentage;
         document.getElementById('zoomSlider').value = zoomPercentage;
-        this.updateReferencePreview();
         
         // Update brush size preview to reflect new zoom level
         const brushPreview = document.getElementById('canvasBrushPreview');
