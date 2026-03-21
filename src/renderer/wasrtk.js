@@ -1688,7 +1688,7 @@ class WASRTK {
         const uiImage = document.getElementById('referenceImage');
         uiImage.src = dataUrl;
         uiImage.style.display = 'block';
-        uiImage.style.transform = `scale(${referenceScale})`;
+        uiImage.style.transform = 'scale(1)';
 
         const zoomSlider = document.getElementById('referenceZoom');
         zoomSlider.value = Math.round(referenceScale * 100);

@@ -2,7 +2,7 @@ function syncReferenceUI(dataUrl, scale) {
   const uiImage = document.getElementById('referenceImage');
   uiImage.src = dataUrl;
   uiImage.style.display = 'block';
-  uiImage.style.transform = `scale(${scale})`;
+  uiImage.style.transform = 'scale(1)';
 
   const zoomSlider = document.getElementById('referenceZoom');
   zoomSlider.value = Math.round(scale * 100);
@@ -51,7 +51,7 @@ function updateReferenceImageOnly(app, api, blob) {
 
       const uiImage = document.getElementById('referenceImage');
       uiImage.src = e.target.result;
-      uiImage.style.transform = `scale(${api.getScale()})`;
+      uiImage.style.transform = 'scale(1)';
 
       const zoomSlider = document.getElementById('referenceZoom');
       zoomSlider.value = Math.round(api.getScale() * 100);

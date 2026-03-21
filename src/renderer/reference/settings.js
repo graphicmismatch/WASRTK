@@ -173,7 +173,7 @@ function updateReferencePreview(api) {
 
   zoomSlider.value = zoomPercentage;
   document.getElementById('referenceZoomValue').textContent = `${zoomPercentage}%`;
-  uiImage.style.transform = `scale(${api.getScale()})`;
+  uiImage.style.transform = 'scale(1)';
   uiImage.style.maxWidth = '100%';
   uiImage.style.maxHeight = '100%';
   uiImage.style.objectFit = 'contain';
