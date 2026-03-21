@@ -65,16 +65,26 @@ function updateViewportIndicator(api, previewImage) {
 
   const imageDisplayLeft = imageRect.left - containerRect.left;
   const imageDisplayTop = imageRect.top - containerRect.top;
-  const indicatorLeft = imageDisplayLeft + (((visibleLeft - imageLeft) / (image.width * scale)) * imageRect.width);
-  const indicatorTop = imageDisplayTop + (((visibleTop - imageTop) / (image.height * scale)) * imageRect.height);
-  const indicatorWidth = ((visibleRight - visibleLeft) / (image.width * scale)) * imageRect.width;
-  const indicatorHeight = ((visibleBottom - visibleTop) / (image.height * scale)) * imageRect.height;
+  const rawLeft = imageDisplayLeft + (((visibleLeft - imageLeft) / (image.width * scale)) * imageRect.width);
+  const rawTop = imageDisplayTop + (((visibleTop - imageTop) / (image.height * scale)) * imageRect.height);
+  const rawRight = rawLeft + (((visibleRight - visibleLeft) / (image.width * scale)) * imageRect.width);
+  const rawBottom = rawTop + (((visibleBottom - visibleTop) / (image.height * scale)) * imageRect.height);
+
+  const clampedLeft = Math.max(0, Math.min(rawLeft, containerRect.width));
+  const clampedTop = Math.max(0, Math.min(rawTop, containerRect.height));
+  const clampedRight = Math.max(0, Math.min(rawRight, containerRect.width));
+  const clampedBottom = Math.max(0, Math.min(rawBottom, containerRect.height));
+
+  if (clampedRight <= clampedLeft || clampedBottom <= clampedTop) {
+    indicator.style.display = 'none';
+    return;
+  }
 
   indicator.style.display = 'block';
-  indicator.style.left = `${indicatorLeft}px`;
-  indicator.style.top = `${indicatorTop}px`;
-  indicator.style.width = `${Math.max(indicatorWidth, 2)}px`;
-  indicator.style.height = `${Math.max(indicatorHeight, 2)}px`;
+  indicator.style.left = `${clampedLeft}px`;
+  indicator.style.top = `${clampedTop}px`;
+  indicator.style.width = `${Math.max(clampedRight - clampedLeft, 2)}px`;
+  indicator.style.height = `${Math.max(clampedBottom - clampedTop, 2)}px`;
 }
 
 function bindReferenceSettingsEvents(app, api) {
