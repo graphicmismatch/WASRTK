@@ -10,6 +10,7 @@ let currentTool = 'pen';
 let currentColor = '#000000';
 let currentOpacity = 1.0; // Alpha channel support
 let brushSize = 1;
+let brushShape = 'circle';
 let isDrawing = false;
 let currentFrame = 0;
 let currentLayer = 0;
@@ -107,6 +108,14 @@ class WASRTK {
         return brushSize;
     }
 
+    getBrushShape() {
+        return brushShape;
+    }
+
+    isAntialiasingEnabled() {
+        return antialiasingEnabled;
+    }
+
     clearOverlay() {
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     }
@@ -146,6 +155,11 @@ class WASRTK {
         const rect = mainCanvas.getBoundingClientRect();
         const canvasX = (screenX - rect.left) / zoom;
         const canvasY = (screenY - rect.top) / zoom;
+
+        if (antialiasingEnabled) {
+            return { x: canvasX, y: canvasY };
+        }
+
         return this.roundToPixel(canvasX, canvasY);
     }
 
@@ -288,10 +302,15 @@ class WASRTK {
             document.getElementById('fillToleranceValue').textContent = fillTolerance;
         });
 
+        document.getElementById('brushShapeSelect').addEventListener('change', (e) => {
+            this.setBrushShape(e.target.value);
+        });
+
         // Antialiasing toggle
         document.getElementById('antialiasingEnabled').addEventListener('change', (e) => {
             antialiasingEnabled = e.target.checked;
             this.updateAllCanvasSmoothing();
+            this.updateBrushPreview();
             this.renderCurrentFrame();
             this.updateStatusBar();
         });
@@ -575,6 +594,10 @@ class WASRTK {
         } else {
             toleranceSection.style.display = 'none';
         }
+
+        const brushShapeControl = document.querySelector('.brush-shape-control');
+        const brushShapeTools = ['pen', 'line', 'eraser'];
+        brushShapeControl.style.display = brushShapeTools.includes(tool) ? 'flex' : 'none';
         
         // Hide brush preview if switching away from pen/eraser
         if (tool !== 'pen' && tool !== 'eraser') {
@@ -607,6 +630,21 @@ class WASRTK {
         const brushPreview = document.getElementById('canvasBrushPreview');
         if (brushPreview.style.display !== 'none' && (currentTool === 'pen' || currentTool === 'eraser')) {
             // Trigger a mouse move event to update the brush preview
+            const event = new MouseEvent('mousemove', {
+                clientX: parseInt(brushPreview.style.left) || 0,
+                clientY: parseInt(brushPreview.style.top) || 0
+            });
+            mainCanvas.dispatchEvent(event);
+        }
+    }
+
+    setBrushShape(shape) {
+        brushShape = shape === 'square' ? 'square' : 'circle';
+        document.getElementById('brushShapeSelect').value = brushShape;
+        this.updateBrushPreview();
+
+        const brushPreview = document.getElementById('canvasBrushPreview');
+        if (brushPreview.style.display !== 'none' && (currentTool === 'pen' || currentTool === 'eraser')) {
             const event = new MouseEvent('mousemove', {
                 clientX: parseInt(brushPreview.style.left) || 0,
                 clientY: parseInt(brushPreview.style.top) || 0
@@ -655,6 +693,8 @@ class WASRTK {
             ctx.stroke();
         }
         
+        this.applyImageSmoothing(ctx);
+
         // Draw brush preview
         ctx.fillStyle = currentColor;
         ctx.globalAlpha = currentOpacity;
@@ -662,17 +702,17 @@ class WASRTK {
         const centerY = previewCanvas.height / 2;
         
         if (brushSize === 1) {
-            // Draw single pixel
-            ctx.fillRect(centerX, centerY, 1, 1);
+            ctx.fillRect(Math.round(centerX), Math.round(centerY), 1, 1);
+        } else if (brushShape === 'square') {
+            const size = Math.round(brushSize);
+            const offset = Math.floor(size / 2);
+            ctx.fillRect(Math.round(centerX) - offset, Math.round(centerY) - offset, size, size);
         } else {
-            // Draw circle
             ctx.beginPath();
             ctx.arc(centerX, centerY, brushSize / 2, 0, Math.PI * 2);
             ctx.fill();
         }
         
-        // Disable smoothing for preview
-        this.applyImageSmoothing(ctx);
     }
 
     // Drawing methods
@@ -965,43 +1005,86 @@ class WASRTK {
         this.renderCurrentFrame();
     }
     
-    drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
-        const dx = Math.abs(x2 - x1);
-        const dy = Math.abs(y2 - y1);
-        const sx = x1 < x2 ? 1 : -1;
-        const sy = y1 < y2 ? 1 : -1;
-        let err = dx - dy;
-        let x = x1;
-        let y = y1;
-        
-        // For brush size > 1, we need to avoid overlapping
-        // Use a single stroke operation with proper width
-        if (brushSize > 1) {
-            ctx.lineWidth = brushSize;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
-            return;
+    getInterpolatedStrokePoints(x1, y1, x2, y2, spacing = 1) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const distance = Math.hypot(dx, dy);
+        const stepDistance = Math.max(0.25, spacing);
+        const steps = Math.max(1, Math.ceil(distance / stepDistance));
+        const points = [];
+
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            points.push({
+                x: x1 + dx * t,
+                y: y1 + dy * t
+            });
         }
-        
+
+        return points;
+    }
+
+    getPixelPerfectLinePoints(x1, y1, x2, y2) {
+        let startX = Math.round(x1);
+        let startY = Math.round(y1);
+        const endX = Math.round(x2);
+        const endY = Math.round(y2);
+        const points = [];
+        const dx = Math.abs(endX - startX);
+        const dy = Math.abs(endY - startY);
+        const sx = startX < endX ? 1 : -1;
+        const sy = startY < endY ? 1 : -1;
+        let err = dx - dy;
+
         while (true) {
-            // For brush size 1, draw single pixels
-            ctx.fillRect(x, y, 1, 1);
-            
-            if (Math.round(x) === Math.round(x2) && Math.round(y) === Math.round(y2)) break;
+            points.push({ x: startX, y: startY });
+
+            if (startX === endX && startY === endY) {
+                return points;
+            }
+
             const e2 = 2 * err;
             if (e2 > -dy) {
                 err -= dy;
-                x += sx;
+                startX += sx;
             }
             if (e2 < dx) {
                 err += dx;
-                y += sy;
+                startY += sy;
             }
         }
+    }
+
+    drawPixelPerfectBrushStamp(ctx, centerX, centerY, size, shape = 'square') {
+        const stampSize = Math.max(1, Math.round(size));
+        const stampCenterX = Math.round(centerX);
+        const stampCenterY = Math.round(centerY);
+        const offset = Math.floor(stampSize / 2);
+
+        if (shape !== 'circle' || stampSize === 1) {
+            ctx.fillRect(stampCenterX - offset, stampCenterY - offset, stampSize, stampSize);
+            return;
+        }
+
+        const radius = stampSize / 2;
+
+        for (let y = 0; y < stampSize; y++) {
+            for (let x = 0; x < stampSize; x++) {
+                const pixelCenterX = x - offset + 0.5;
+                const pixelCenterY = y - offset + 0.5;
+                if ((pixelCenterX * pixelCenterX) + (pixelCenterY * pixelCenterY) <= radius * radius) {
+                    ctx.fillRect(stampCenterX - offset + x, stampCenterY - offset + y, 1, 1);
+                }
+            }
+        }
+    }
+
+    drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
+        const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
+
+        points.forEach(({ x, y }) => {
+            this.drawPixelPerfectBrushStamp(ctx, x, y, brushSize, brushShape);
+        });
     }
     
     drawPixelPerfectCircleWithFillRect(ctx, cx, cy, rx, ry) {
@@ -1857,6 +1940,7 @@ class WASRTK {
                     currentColor,
                     currentOpacity,
                     brushSize,
+                    brushShape,
                     zoom
                 }
             });
@@ -2127,11 +2211,13 @@ class WASRTK {
             brushPreview.classList.add('pixel');
             brushPreview.style.width = '2px';
             brushPreview.style.height = '2px';
+            brushPreview.style.borderRadius = '0';
         } else {
             brushPreview.classList.remove('pixel');
             const size = Math.max(2, brushSize * zoom); // Ensure minimum 2px size for visibility
             brushPreview.style.width = size + 'px';
             brushPreview.style.height = size + 'px';
+            brushPreview.style.borderRadius = brushShape === 'square' ? '0' : '50%';
         }
         
         // Set the preview color based on tool
@@ -2237,6 +2323,7 @@ class WASRTK {
             currentColor = settings.currentColor;
             currentOpacity = settings.currentOpacity;
             brushSize = settings.brushSize;
+            brushShape = settings.brushShape;
             zoom = settings.zoom;
 
             this.updateAllCanvasSmoothing();
@@ -2259,6 +2346,7 @@ class WASRTK {
             document.getElementById('colorPicker').value = currentColor;
             document.getElementById('brushSizeSlider').value = brushSize;
             document.getElementById('brushSizeValue').textContent = brushSize + 'px';
+            document.getElementById('brushShapeSelect').value = brushShape;
             document.getElementById('opacitySlider').value = currentOpacity * 100;
             document.getElementById('opacityValue').textContent = Math.round(currentOpacity * 100) + '%';
 

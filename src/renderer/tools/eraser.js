@@ -15,6 +15,22 @@ module.exports = {
   drawPoint(app, { ctx, coords }) {
     ctx.globalCompositeOperation = 'destination-out';
 
+    const isSquareBrush = app.getBrushShape() === 'square';
+
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+
+    if (!app.isAntialiasingEnabled()) {
+      app.drawPixelPerfectBrushStamp(ctx, coords.x, coords.y, app.getBrushSize(), app.getBrushShape());
+      return;
+    }
+
+    if (isSquareBrush) {
+      const size = app.getBrushSize();
+      const offset = size / 2;
+      ctx.clearRect(coords.x - offset, coords.y - offset, size, size);
+      return;
+    }
+
     if (app.getBrushSize() === 1) {
       ctx.clearRect(coords.x, coords.y, 1, 1);
       return;
@@ -26,6 +42,31 @@ module.exports = {
   },
   drawLine(app, { ctx, x1, y1, x2, y2 }) {
     ctx.globalCompositeOperation = 'destination-out';
+
+    const isSquareBrush = app.getBrushShape() === 'square';
+
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+
+    if (!app.isAntialiasingEnabled()) {
+      const points = app.getPixelPerfectLinePoints(x1, y1, x2, y2);
+
+      points.forEach(({ x, y }) => {
+        app.drawPixelPerfectBrushStamp(ctx, x, y, app.getBrushSize(), app.getBrushShape());
+      });
+      return;
+    }
+
+    if (isSquareBrush) {
+      const size = app.getBrushSize();
+      const offset = size / 2;
+      const points = app.getInterpolatedStrokePoints(x1, y1, x2, y2, Math.max(0.5, size / 4));
+
+      points.forEach(({ x, y }) => {
+        ctx.clearRect(x - offset, y - offset, size, size);
+      });
+      return;
+    }
+
     ctx.strokeStyle = 'rgba(0,0,0,1)';
     ctx.lineWidth = app.getBrushSize();
     ctx.lineCap = 'round';
