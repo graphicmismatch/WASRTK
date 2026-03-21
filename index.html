@@ -73,6 +73,13 @@
                     </div>
                     <input type="range" id="brushSizeSlider" min="1" max="50" value="1" class="slider">
                     <span id="brushSizeValue">1px</span>
+                    <div class="brush-shape-control">
+                        <label for="brushShapeSelect">Brush Shape:</label>
+                        <select id="brushShapeSelect" title="Choose whether the pen and eraser use circular or square brushes.">
+                            <option value="circle" selected>Circle</option>
+                            <option value="square">Square</option>
+                        </select>
+                    </div>
                     <div class="antialiasing-control">
                         <label>
                             <input type="checkbox" id="antialiasingEnabled" checked title="Enable smooth drawing with antialiasing. When disabled, drawing is pixel-perfect.">

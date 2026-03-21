@@ -10,6 +10,7 @@ let currentTool = 'pen';
 let currentColor = '#000000';
 let currentOpacity = 1.0; // Alpha channel support
 let brushSize = 1;
+let brushShape = 'circle';
 let isDrawing = false;
 let currentFrame = 0;
 let currentLayer = 0;
@@ -105,6 +106,10 @@ class WASRTK {
 
     getBrushSize() {
         return brushSize;
+    }
+
+    getBrushShape() {
+        return brushShape;
     }
 
     isAntialiasingEnabled() {
@@ -297,10 +302,15 @@ class WASRTK {
             document.getElementById('fillToleranceValue').textContent = fillTolerance;
         });
 
+        document.getElementById('brushShapeSelect').addEventListener('change', (e) => {
+            this.setBrushShape(e.target.value);
+        });
+
         // Antialiasing toggle
         document.getElementById('antialiasingEnabled').addEventListener('change', (e) => {
             antialiasingEnabled = e.target.checked;
             this.updateAllCanvasSmoothing();
+            this.updateBrushPreview();
             this.renderCurrentFrame();
             this.updateStatusBar();
         });
@@ -624,6 +634,21 @@ class WASRTK {
         }
     }
 
+    setBrushShape(shape) {
+        brushShape = shape === 'square' ? 'square' : 'circle';
+        document.getElementById('brushShapeSelect').value = brushShape;
+        this.updateBrushPreview();
+
+        const brushPreview = document.getElementById('canvasBrushPreview');
+        if (brushPreview.style.display !== 'none' && (currentTool === 'pen' || currentTool === 'eraser')) {
+            const event = new MouseEvent('mousemove', {
+                clientX: parseInt(brushPreview.style.left) || 0,
+                clientY: parseInt(brushPreview.style.top) || 0
+            });
+            mainCanvas.dispatchEvent(event);
+        }
+    }
+
     setOpacity(opacity) {
         currentOpacity = opacity / 100;
         this.updateBrushPreview();
@@ -673,10 +698,12 @@ class WASRTK {
         const centerY = previewCanvas.height / 2;
         
         if (brushSize === 1) {
-            // Draw single pixel
-            ctx.fillRect(centerX, centerY, 1, 1);
+            ctx.fillRect(Math.round(centerX), Math.round(centerY), 1, 1);
+        } else if (brushShape === 'square') {
+            const size = Math.round(brushSize);
+            const offset = Math.floor(size / 2);
+            ctx.fillRect(Math.round(centerX) - offset, Math.round(centerY) - offset, size, size);
         } else {
-            // Draw circle
             ctx.beginPath();
             ctx.arc(centerX, centerY, brushSize / 2, 0, Math.PI * 2);
             ctx.fill();
@@ -1869,6 +1896,7 @@ class WASRTK {
                     currentColor,
                     currentOpacity,
                     brushSize,
+                    brushShape,
                     zoom
                 }
             });
@@ -2139,11 +2167,13 @@ class WASRTK {
             brushPreview.classList.add('pixel');
             brushPreview.style.width = '2px';
             brushPreview.style.height = '2px';
+            brushPreview.style.borderRadius = '0';
         } else {
             brushPreview.classList.remove('pixel');
             const size = Math.max(2, brushSize * zoom); // Ensure minimum 2px size for visibility
             brushPreview.style.width = size + 'px';
             brushPreview.style.height = size + 'px';
+            brushPreview.style.borderRadius = brushShape === 'square' ? '0' : '50%';
         }
         
         // Set the preview color based on tool
@@ -2249,6 +2279,7 @@ class WASRTK {
             currentColor = settings.currentColor;
             currentOpacity = settings.currentOpacity;
             brushSize = settings.brushSize;
+            brushShape = settings.brushShape;
             zoom = settings.zoom;
 
             this.updateAllCanvasSmoothing();
@@ -2271,6 +2302,7 @@ class WASRTK {
             document.getElementById('colorPicker').value = currentColor;
             document.getElementById('brushSizeSlider').value = brushSize;
             document.getElementById('brushSizeValue').textContent = brushSize + 'px';
+            document.getElementById('brushShapeSelect').value = brushShape;
             document.getElementById('opacitySlider').value = currentOpacity * 100;
             document.getElementById('opacityValue').textContent = Math.round(currentOpacity * 100) + '%';
 

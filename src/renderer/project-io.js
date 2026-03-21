@@ -124,6 +124,7 @@ function normalizeProjectSettings(settings = {}) {
     currentColor: settings.currentColor || '#000000',
     currentOpacity: settings.currentOpacity || 1.0,
     brushSize: settings.brushSize || 1,
+    brushShape: settings.brushShape || 'circle',
     zoom: settings.zoom || 1
   };
 }
