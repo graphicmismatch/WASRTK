@@ -38,9 +38,8 @@ function updateViewportIndicator(api, previewImage) {
     return;
   }
 
-  const viewport = api.getViewport();
   const scale = api.getScale();
-  if (!viewport || !scale) {
+  if (!scale) {
     indicator.style.display = 'none';
     return;
   }
@@ -49,13 +48,15 @@ function updateViewportIndicator(api, previewImage) {
   const imageTop = api.getY();
   const imageRight = imageLeft + (image.width * scale);
   const imageBottom = imageTop + (image.height * scale);
-  const viewportRight = viewport.left + viewport.width;
-  const viewportBottom = viewport.top + viewport.height;
+  const canvasLeft = 0;
+  const canvasTop = 0;
+  const canvasRight = api.getCanvasWidth();
+  const canvasBottom = api.getCanvasHeight();
 
-  const visibleLeft = Math.max(viewport.left, imageLeft);
-  const visibleTop = Math.max(viewport.top, imageTop);
-  const visibleRight = Math.min(viewportRight, imageRight);
-  const visibleBottom = Math.min(viewportBottom, imageBottom);
+  const visibleLeft = Math.max(canvasLeft, imageLeft);
+  const visibleTop = Math.max(canvasTop, imageTop);
+  const visibleRight = Math.min(canvasRight, imageRight);
+  const visibleBottom = Math.min(canvasBottom, imageBottom);
 
   if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
     indicator.style.display = 'none';
