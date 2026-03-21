@@ -1001,6 +1001,25 @@ class WASRTK {
         this.renderCurrentFrame();
     }
     
+    getInterpolatedStrokePoints(x1, y1, x2, y2, spacing = 1) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const distance = Math.hypot(dx, dy);
+        const stepDistance = Math.max(0.25, spacing);
+        const steps = Math.max(1, Math.ceil(distance / stepDistance));
+        const points = [];
+
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            points.push({
+                x: x1 + dx * t,
+                y: y1 + dy * t
+            });
+        }
+
+        return points;
+    }
+
     getPixelPerfectLinePoints(x1, y1, x2, y2) {
         let startX = Math.round(x1);
         let startY = Math.round(y1);
