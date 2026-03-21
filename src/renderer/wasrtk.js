@@ -463,8 +463,10 @@ class WASRTK {
             }
         });
 
+        const canvasWrapper = document.querySelector('.canvas-wrapper');
+
         // Also add wheel listener to canvas wrapper for better coverage
-        document.querySelector('.canvas-wrapper').addEventListener('wheel', (e) => {
+        canvasWrapper.addEventListener('wheel', (e) => {
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? -1 : 1;
@@ -474,12 +476,12 @@ class WASRTK {
             }
         });
 
+
         // Undo/Redo buttons
         document.getElementById('undoBtn').addEventListener('click', () => this.undo());
         document.getElementById('redoBtn').addEventListener('click', () => this.redo());
 
         // Panning with middle mouse button
-        const canvasWrapper = document.querySelector('.canvas-wrapper');
         canvasWrapper.addEventListener('mousedown', (e) => {
             if (e.button === 1) { // Middle mouse button
                 isPanning = true;
@@ -1686,15 +1688,16 @@ class WASRTK {
         const uiImage = document.getElementById('referenceImage');
         uiImage.src = dataUrl;
         uiImage.style.display = 'block';
-        uiImage.style.transform = `scale(${referenceScale})`;
+        uiImage.style.transform = 'scale(1)';
 
         const zoomSlider = document.getElementById('referenceZoom');
         zoomSlider.value = Math.round(referenceScale * 100);
-        document.getElementById('referenceZoomValue').textContent = Math.round(referenceScale * 100) + '%';
+        document.getElementById('referenceZoomValue').value = Math.round(referenceScale * 100);
 
         referenceVisible = true;
         document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
 
+        this.updateReferencePreview();
         this.renderCurrentFrame();
         this.updateStatusBar();
     }
@@ -2250,7 +2253,7 @@ class WASRTK {
             document.getElementById('onionSkinningRange').value = onionSkinningRange;
             document.getElementById('onionSkinningValue').textContent = onionSkinningRange;
             document.getElementById('referenceOpacity').value = referenceOpacity * 100;
-            document.getElementById('referenceOpacityValue').textContent = Math.round(referenceOpacity * 100) + '%';
+            document.getElementById('referenceOpacityValue').value = Math.round(referenceOpacity * 100);
             document.getElementById('antialiasingEnabled').checked = antialiasingEnabled;
             document.getElementById('colorPicker').value = currentColor;
             document.getElementById('brushSizeSlider').value = brushSize;
