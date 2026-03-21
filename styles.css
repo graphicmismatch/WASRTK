@@ -618,11 +618,20 @@ body {
     flex: 1;
 }
 
-.reference-opacity span {
-    font-size: 12px;
+.reference-value-input {
+    width: 62px;
+    padding: 4px 6px;
+    border: 1px solid var(--bg-med);
+    border-radius: 4px;
+    background-color: var(--bg-dark);
     color: var(--text-light);
-    min-width: 30px;
+    font-size: 12px;
     text-align: right;
+}
+
+.reference-value-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
 }
 
 .reference-zoom {
@@ -641,12 +650,6 @@ body {
     flex: 1;
 }
 
-.reference-zoom span {
-    font-size: 12px;
-    color: var(--text-light);
-    min-width: 30px;
-    text-align: right;
-}
 
 .reference-help {
     text-align: center;

@@ -1,4 +1,19 @@
 
+
+function clampPercentage(value, min, max, fallback) {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function setReferenceOpacityInputValue(value) {
+  document.getElementById('referenceOpacityValue').value = value;
+}
+
+function setReferenceZoomInputValue(value) {
+  document.getElementById('referenceZoomValue').value = value;
+}
+
 function repositionReferenceFromPreview(event, app, api) {
   const image = api.getImage();
   const previewImage = document.getElementById('referenceImage');
@@ -96,15 +111,32 @@ function bindReferenceSettingsEvents(app, api) {
   });
   document.getElementById('clearReferenceBtn').addEventListener('click', () => app.clearReferenceImage());
   document.getElementById('referenceOpacity').addEventListener('input', (e) => {
-    api.setOpacity(parseInt(e.target.value, 10) / 100);
-    document.getElementById('referenceOpacityValue').textContent = `${e.target.value}%`;
+    const opacityPercentage = clampPercentage(e.target.value, 0, 100, Math.round(api.getOpacity() * 100));
+    api.setOpacity(opacityPercentage / 100);
+    setReferenceOpacityInputValue(opacityPercentage);
+    app.renderCurrentFrame();
+  });
+  document.getElementById('referenceOpacityValue').addEventListener('change', (e) => {
+    const opacityPercentage = clampPercentage(e.target.value, 0, 100, Math.round(api.getOpacity() * 100));
+    document.getElementById('referenceOpacity').value = opacityPercentage;
+    setReferenceOpacityInputValue(opacityPercentage);
+    api.setOpacity(opacityPercentage / 100);
     app.renderCurrentFrame();
   });
   document.getElementById('referenceZoom').addEventListener('input', (e) => {
-    const zoomPercentage = parseInt(e.target.value, 10);
+    const zoomPercentage = clampPercentage(e.target.value, 10, 500, Math.round(api.getScale() * 100));
     api.setScale(zoomPercentage / 100);
     api.setUserModified(true);
-    document.getElementById('referenceZoomValue').textContent = `${zoomPercentage}%`;
+    setReferenceZoomInputValue(zoomPercentage);
+    app.updateReferencePreview();
+    app.renderCurrentFrame();
+  });
+  document.getElementById('referenceZoomValue').addEventListener('change', (e) => {
+    const zoomPercentage = clampPercentage(e.target.value, 10, 500, Math.round(api.getScale() * 100));
+    document.getElementById('referenceZoom').value = zoomPercentage;
+    setReferenceZoomInputValue(zoomPercentage);
+    api.setScale(zoomPercentage / 100);
+    api.setUserModified(true);
     app.updateReferencePreview();
     app.renderCurrentFrame();
   });
@@ -151,7 +183,9 @@ function clearReferenceImage(app, api) {
 
   const zoomSlider = document.getElementById('referenceZoom');
   zoomSlider.value = 100;
-  document.getElementById('referenceZoomValue').textContent = '100%';
+  document.getElementById('referenceOpacity').value = 50;
+  setReferenceZoomInputValue(100);
+  setReferenceOpacityInputValue(50);
 
   document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye"></i>';
 
@@ -172,7 +206,7 @@ function updateReferencePreview(api) {
   const zoomSlider = document.getElementById('referenceZoom');
 
   zoomSlider.value = zoomPercentage;
-  document.getElementById('referenceZoomValue').textContent = `${zoomPercentage}%`;
+  setReferenceZoomInputValue(zoomPercentage);
   uiImage.style.transform = 'scale(1)';
   uiImage.style.maxWidth = '100%';
   uiImage.style.maxHeight = '100%';
@@ -186,5 +220,7 @@ module.exports = {
   toggleReference,
   resetReferencePosition,
   clearReferenceImage,
-  updateReferencePreview
+  updateReferencePreview,
+  setReferenceOpacityInputValue,
+  setReferenceZoomInputValue
 };

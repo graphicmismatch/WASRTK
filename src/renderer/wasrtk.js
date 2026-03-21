@@ -1692,7 +1692,7 @@ class WASRTK {
 
         const zoomSlider = document.getElementById('referenceZoom');
         zoomSlider.value = Math.round(referenceScale * 100);
-        document.getElementById('referenceZoomValue').textContent = Math.round(referenceScale * 100) + '%';
+        document.getElementById('referenceZoomValue').value = Math.round(referenceScale * 100);
 
         referenceVisible = true;
         document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
@@ -2253,7 +2253,7 @@ class WASRTK {
             document.getElementById('onionSkinningRange').value = onionSkinningRange;
             document.getElementById('onionSkinningValue').textContent = onionSkinningRange;
             document.getElementById('referenceOpacity').value = referenceOpacity * 100;
-            document.getElementById('referenceOpacityValue').textContent = Math.round(referenceOpacity * 100) + '%';
+            document.getElementById('referenceOpacityValue').value = Math.round(referenceOpacity * 100);
             document.getElementById('antialiasingEnabled').checked = antialiasingEnabled;
             document.getElementById('colorPicker').value = currentColor;
             document.getElementById('brushSizeSlider').value = brushSize;
