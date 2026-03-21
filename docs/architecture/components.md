@@ -1,178 +1,106 @@
 # Component Architecture
 
-## Overview
+## Top-level components
 
-This document provides a detailed breakdown of WASRTK's component architecture. For high-level architecture information, see [Architecture Overview](./overview.md).
+### `main.js`
 
-## Component Interaction Diagram
+Application bootstrap. It creates the window controller, registers IPC handlers, and installs the app menu when Electron is ready.
 
-```mermaid
-graph TB
-    A[Main Process] --> B[Renderer Process]
-    B --> C[Canvas System]
-    B --> D[UI Components]
-    B --> E[State Management]
-    C --> F[Layer System]
-    C --> G[Tool System]
-    C --> H[Animation Engine]
-```
+### `src/main/window.js`
 
-## Main Process Components
+Owns:
 
-### Window Management Component
-**Location**: `main.js` - `createWindow()` function
-**Responsibilities**:
-- Electron browser window creation and configuration
-- Window size and position management
+- Main editor window creation
+- Theme settings window creation
+- File dialog helpers that send chosen paths back to the renderer
+- Broadcast of `theme-config-updated` events to all open windows
 
-### IPC Handler Component
-**Location**: `main.js` - IPC event handlers
-**Responsibilities**:
-- File system operations (save, load, export)
-- Binary file reading for image loading
-- Screen capture functionality
+### `src/main/menu.js`
 
-## Renderer Process Components
+Defines menu sections for:
 
-### WASRTK Main Class
-**Location**: `renderer.js` - `WASRTK` class
-**Responsibilities**:
-- Application initialization and lifecycle
-- Component coordination
-- Event system management
+- File
+- Edit
+- View
+- Animation
+- Layers
+- Reference
+- Tools
 
-## Canvas System Components
+Most actions send IPC-driven commands into the renderer rather than mutating state directly in the main process.
 
-### Main Canvas Component
-**Purpose**: Primary drawing surface for composite rendering
-**Properties**:
-- `mainCanvas`: HTML5 Canvas element (256x256 default)
-- `mainCtx`: 2D rendering context
-- Background: White (#ffffff)
+### `src/main/ipc.js`
 
-### Layer Canvas Components
-**Purpose**: Individual layer drawing surfaces
-**Structure**:
-```javascript
-const layer = {
-    id: number,
-    name: string,
-    visible: boolean,
-    locked: boolean,
-    canvas: HTMLCanvasElement,
-    ctx: CanvasRenderingContext2D
-}
-```
+Registers `ipcMain.handle(...)` endpoints for:
 
-### Overlay Canvas Component
-**Purpose**: Temporary drawing previews
-**Properties**:
-- `overlayCanvas`: HTML5 Canvas element
-- `overlayCtx`: 2D rendering context
-- Used for: Shape previews, brush previews
+- Screen source enumeration
+- Text file reads
+- Binary file reads
+- File saves
+- Theme config load/save/reset/path lookup
 
-## Tool System Components
+### `src/renderer/wasrtk.js`
 
-### Tool Selection Component
-**Purpose**: Manages active drawing tool
-**Properties**:
-- `currentTool`: Active tool identifier
-- Supported tools: pen, line, rectangle, circle, fill, eraser
+This is the main editor controller. It owns:
 
-### Brush Component
-**Purpose**: Manages brush properties
-**Properties**:
-- `brushSize`: Brush size in pixels (1-50)
-- `currentColor`: Active color (hex format)
-- `currentOpacity`: Opacity level (0.0-1.0)
-- `fillTolerance`: Flood fill tolerance (0-255)
+- Canvas setup
+- Global editor state
+- Event listeners
+- Undo/redo stacks
+- Drawing, shapes, flood fill, and compositing
+- Frame and layer management
+- Playback
+- Status bar and UI refreshes
+- Project save/load
 
-### Drawing Tool Components
+### `src/renderer/tools/`
 
-#### Pen Tool Component
-**Purpose**: Freehand drawing with brush settings
-**Key Operations**:
-```javascript
-drawPoint(x, y, useStrokeCtx = false) {
-    const ctx = useStrokeCtx ? strokeCtx : frame.layers[currentLayer].ctx;
-    ctx.fillStyle = currentColor;
-    ctx.globalAlpha = currentOpacity;
-    ctx.fillRect(x, y, brushSize, brushSize);
-}
-```
+Each tool exports an object with at least an `id`. The loader scans the directory at runtime and builds the tool registry.
 
-#### Line Tool Component
-**Purpose**: Straight line drawing with preview
-**Key Operations**:
-```javascript
-drawLine(x1, y1, x2, y2, useStrokeCtx = false) {
-    const points = getLinePoints(x1, y1, x2, y2);
-    points.forEach(point => drawPoint(point.x, point.y, useStrokeCtx));
-}
-```
+Current tool modules:
 
-## Animation System Components
+- `pen.js`
+- `line.js`
+- `rectangle.js`
+- `circle.js`
+- `fill.js`
+- `eraser.js`
 
-### Frame Management Component
-**Purpose**: Manages animation frames
-**Properties**:
-- `frames`: Array of frame objects
-- `currentFrame`: Active frame index
-- `fps`: Animation speed (default: 12)
+### `src/renderer/project-io.js`
 
-### Animation Playback Component
-**Purpose**: Controls animation playback
-**Properties**:
-- `isAnimating`: Playback state
-- `fps`: Frames per second
-- `animationInterval`: Playback timer
+Pure-ish helpers for:
 
-### Onion Skinning Component
-**Purpose**: Shows previous/next frames for animation guidance
-**Properties**:
-- `onionSkinningEnabled`: Toggle state
-- `onionSkinningRange`: Number of frames to show (default: 3)
+- Parsing JSON project data
+- Validating required fields
+- Building serializable project objects
+- Rebuilding frame/layer canvases from saved data
+- Normalizing per-project settings
 
-## UI Component System
+### `src/renderer/exporters.js`
 
-### Timeline UI Component
-**Purpose**: Frame management interface
-**Key Elements**:
-- Frame thumbnails
-- Add/duplicate/delete frame buttons
-- Frame selection indicators
+Contains:
 
-### Toolbar UI Component
-**Purpose**: Drawing tool selection and settings
-**Key Elements**:
-- Tool buttons with icons
-- Brush size slider
-- Color picker
-- Opacity slider
+- MIME type lookup for reference file loading
+- Visible-layer compositing
+- PNG sequence export
+- GIF export through `gif.js`
 
-### Layer Panel Component
-**Purpose**: Layer management interface
-**Key Elements**:
-- Layer list with visibility toggles
-- Add/delete layer buttons
-- Layer reordering controls
+### `src/renderer/reference/`
 
-## State Management Components
+Split into:
 
-### History Component
-**Purpose**: Undo/redo functionality
-**Properties**:
-- `undoStack`: Array of previous states
-- `redoStack`: Array of future states
-- `maxHistorySize`: Maximum history entries (default: 50)
+- `settings.js`: UI controls, preview interaction, reset/clear/toggle logic
+- `modes/image.js`: file-based reference loading
+- `modes/screen-capture.js`: desktop/window capture workflow
 
-### Reference Image Component
-**Purpose**: Manages reference images for rotoscoping
-**Properties**:
-- `referenceImage`: Image element
-- `referenceVisible`: Visibility toggle
-- `referenceOpacity`: Opacity level
-- `referenceX`, `referenceY`: Position
-- `referenceScale`: Scale factor
+### Theme components
 
-This component architecture provides a modular and extensible foundation for the WASRTK application. 
+- `src/main/theme-config.js` persists and sanitizes theme JSON
+- `src/renderer/theme.js` applies CSS custom properties
+- `src/renderer/theme-window.js` builds and manages the theme editor UI
+
+## Data ownership
+
+- Main process owns OS integration and filesystem entry points.
+- Renderer owns document state and raster data.
+- Theme config is shared across windows through IPC updates.

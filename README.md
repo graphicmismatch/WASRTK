@@ -1,38 +1,54 @@
-# 🖌️ WASRTK
+# WASRTK
 
-WASRTK is a powerful, open-source pixel art and animation tool designed for artists and animators who need a streamlined workflow for rotoscoping and traditional animation. Built with Electron, it combines the flexibility of modern web technologies with the performance of a desktop application.
+WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, and rotoscoping with reference images or live screen capture.
 
-## ✨ Key Features
+## Current feature set
 
-- **Drawing Tools**: Pen, brush, line, rectangle, circle, fill, eraser, and eyedropper tools
-- **Animation System**: Frame management, timeline, onion skinning, and playback controls
-- **Layer System**: Multiple layers with visibility and management controls
-- **Reference Images**: Load and overlay reference images for rotoscoping
-- **Export Options**: PNG sequences and GIF animations with transparency support
-- **Canvas Controls**: Zoom, pan, and navigation with customizable canvas size
+- Six drawing tools: pen, line, rectangle, circle, fill, and eraser
+- Frame timeline with add, duplicate, delete, drag-to-reorder, and playback
+- Multi-layer editing with visibility toggles, reordering, and flattening
+- Onion skinning with configurable range
+- Reference images from files or desktop/window capture
+- Project save/load in `.wasrtk`
+- Export to PNG sequences or animated GIF
+- Theme customization through a separate theme settings window
 
-## 🚀 Getting Started
+## Getting started
 
-For installation and basic usage instructions, see the **[Quick Start Guide](QUICKSTART.md)**.
+```bash
+git clone https://github.com/graphicmismatch/WASRTK.git
+cd WASRTK
+npm install
+npm start
+```
 
-## 📚 Documentation
+The repo currently ships Electron `13.1.7` and `gif.js` as its only runtime dependency. There is no automated test suite in this repository at the moment; validation is manual by launching the app.
 
-For detailed technical information, see the [Technical Documentation](./docs/README.md):
-- [Drawing Tools](./docs/features/drawing-tools.md) - Complete tool reference
-- [Timeline System](./docs/features/timeline-system.md) - Animation workflow
-- [Keyboard Shortcuts](./docs/api/keyboard-shortcuts.md) - All shortcuts
-- [File Formats](./docs/api/file-formats.md) - Project and export formats
+## Scripts
 
-## 🤝 Contributing
+- `npm start` launches the app
+- `npm run dev` launches the app and opens DevTools
+- `npm run build` creates packaged output with `electron-builder`
+- `npm run build:win`, `npm run build:mac`, `npm run build:linux` build platform-specific bundles
 
-Contributions are welcome! Please see our [Contributing Guidelines](./docs/development/contributing.md) for details.
+## Documentation
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a pull request
+- [Quick Start](./QUICKSTART.md)
+- [Documentation Index](./docs/README.md)
+- [Architecture Overview](./docs/architecture/overview.md)
+- [Drawing Tools](./docs/features/drawing-tools.md)
+- [Timeline System](./docs/features/timeline-system.md)
+- [Keyboard Shortcuts](./docs/api/keyboard-shortcuts.md)
+- [File Formats](./docs/api/file-formats.md)
 
-## 📄 License
+## Repository layout
 
-This project is licensed under the GPL-3.0-or-later License - see the [LICENSE](LICENSE) file for details.
+- `main.js` wires Electron startup
+- `src/main/` contains menus, IPC, window management, and theme config persistence
+- `src/renderer/` contains the editor, tools, project I/O, exporters, references, and theming
+- `index.html` and `styles.css` define the main UI
+- `theme-window.html` and `theme-window.js` provide the theme editor window
+
+## License
+
+WASRTK is licensed under [GPL-3.0-or-later](./LICENSE).
