@@ -1,3 +1,28 @@
+
+function repositionReferenceFromPreview(event, app, api) {
+  const image = api.getImage();
+  const previewImage = document.getElementById('referenceImage');
+  if (!image || !api.isVisible() || previewImage.style.display === 'none') return;
+
+  const rect = previewImage.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const clickX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+  const clickY = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
+
+  const imagePointX = (clickX / rect.width) * image.width;
+  const imagePointY = (clickY / rect.height) * image.height;
+  const scale = api.getScale();
+
+  api.setPosition(
+    (api.getCanvasWidth() / 2) - (imagePointX * scale),
+    (api.getCanvasHeight() / 2) - (imagePointY * scale)
+  );
+  api.setUserModified(true);
+  app.updateReferencePreview();
+  app.renderCurrentFrame();
+}
+
 function bindReferenceSettingsEvents(app, api) {
   document.getElementById('toggleReferenceBtn').addEventListener('click', () => app.toggleReference());
   document.getElementById('resetReferenceBtn').addEventListener('click', () => {
@@ -18,6 +43,9 @@ function bindReferenceSettingsEvents(app, api) {
     document.getElementById('referenceZoomValue').textContent = `${zoomPercentage}%`;
     app.updateReferencePreview();
     app.renderCurrentFrame();
+  });
+  document.getElementById('referenceScrollContainer').addEventListener('click', (e) => {
+    repositionReferenceFromPreview(e, app, api);
   });
 }
 
