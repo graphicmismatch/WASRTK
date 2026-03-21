@@ -2,11 +2,11 @@ function syncReferenceUI(dataUrl, scale) {
   const uiImage = document.getElementById('referenceImage');
   uiImage.src = dataUrl;
   uiImage.style.display = 'block';
-  uiImage.style.transform = `scale(${scale})`;
+  uiImage.style.transform = 'scale(1)';
 
   const zoomSlider = document.getElementById('referenceZoom');
   zoomSlider.value = Math.round(scale * 100);
-  document.getElementById('referenceZoomValue').textContent = `${Math.round(scale * 100)}%`;
+  document.getElementById('referenceZoomValue').value = Math.round(scale * 100);
 }
 
 function loadReferenceFromBlob(app, api, blob, sourceName) {
@@ -25,6 +25,7 @@ function loadReferenceFromBlob(app, api, blob, sourceName) {
         document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
       }
 
+      app.updateReferencePreview();
       app.renderCurrentFrame();
       app.updateStatusBar();
     };
@@ -50,12 +51,13 @@ function updateReferenceImageOnly(app, api, blob) {
 
       const uiImage = document.getElementById('referenceImage');
       uiImage.src = e.target.result;
-      uiImage.style.transform = `scale(${api.getScale()})`;
+      uiImage.style.transform = 'scale(1)';
 
       const zoomSlider = document.getElementById('referenceZoom');
       zoomSlider.value = Math.round(api.getScale() * 100);
-      document.getElementById('referenceZoomValue').textContent = `${Math.round(api.getScale() * 100)}%`;
+      document.getElementById('referenceZoomValue').value = Math.round(api.getScale() * 100);
 
+      app.updateReferencePreview();
       app.renderCurrentFrame();
       app.updateStatusBar();
     };

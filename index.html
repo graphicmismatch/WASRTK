@@ -296,20 +296,21 @@
                         <div class="reference-opacity">
                             <label for="referenceOpacity">Opacity:</label>
                             <input type="range" id="referenceOpacity" min="0" max="100" value="50" class="slider">
-                            <span id="referenceOpacityValue">50%</span>
+                            <input type="number" id="referenceOpacityValue" class="reference-value-input" min="0" max="100" step="1" value="50" aria-label="Reference opacity percentage">
                         </div>
                         <div class="reference-zoom">
                             <label for="referenceZoom">Zoom:</label>
                             <input type="range" id="referenceZoom" min="10" max="500" value="100" class="slider">
-                            <span id="referenceZoomValue">100%</span>
+                            <input type="number" id="referenceZoomValue" class="reference-value-input" min="10" max="500" step="1" value="100" aria-label="Reference zoom percentage">
                         </div>
                         <div class="reference-help">
-                            <small>Ctrl+click to drag • Ctrl+R to re-center • Zoom is preserved • Desktop icon for screen share</small>
+                            <small>Click preview to re-position • Box shows displayed area • Ctrl+click to drag • Ctrl+R to re-center</small>
                         </div>
                     </div>
                     <div id="referenceContainer" class="reference-container">
                         <div id="referenceScrollContainer" class="reference-scroll-container">
                             <img id="referenceImage" style="display: none;">
+                            <div id="referenceViewportIndicator" class="reference-viewport-indicator" aria-hidden="true"></div>
                         </div>
                     </div>
                 </div>
