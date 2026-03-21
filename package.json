@@ -31,21 +31,33 @@
     "appId": "com.wasrtk.app",
     "productName": "WASRTK",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "assets"
     },
     "files": [
       "**/*",
       "!node_modules/**/*",
       "!dist/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "assets/icon.png",
+        "to": "assets/icon.png"
+      }
+    ],
     "mac": {
       "category": "public.app-category.graphics-design"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "icon.png"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "linux",
+      "desktop": {
+        "StartupWMClass": "wasrtk"
+      }
     }
   }
-} 
+}

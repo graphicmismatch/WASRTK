@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { app } = require('electron');
 
 const THUMBNAIL_SIZE = { width: 150, height: 150 };
 
@@ -36,7 +37,10 @@ function getWindowOptions(baseDir) {
     show: false
   };
 
-  const iconPath = path.join(baseDir, 'assets', 'icon.png');
+  const packagedIconPath = path.join(process.resourcesPath, 'assets', 'icon.png');
+  const localIconPath = path.join(baseDir, 'assets', 'icon.png');
+  const iconPath = app.isPackaged ? packagedIconPath : localIconPath;
+
   if (fs.existsSync(iconPath)) {
     windowOptions.icon = iconPath;
   }
