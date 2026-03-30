@@ -4,14 +4,21 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 
 ## Current feature set
 
-- Six drawing tools: pen, line, rectangle, circle, fill, and eraser
+- Seven drawing tools: pen, line, rectangle, circle, fill, eraser, and selection
 - Frame timeline with add, duplicate, delete, drag-to-reorder, and playback
 - Multi-layer editing with visibility toggles, reordering, and flattening
 - Onion skinning with configurable range
 - Reference images from files or desktop/window capture
 - Project save/load in `.wasrtk`
 - Export to PNG sequences or animated GIF
+- Multiple palette presets with quick swatch switching
 - Theme customization through a separate theme settings window
+
+## Project task list
+
+- [x] Add additional professional-grade tool types (selection tool).
+- [x] Add selection workflows for region move/edit.
+- [x] Add palette choices for fast color workflow switching.
 
 ## Getting started
 
