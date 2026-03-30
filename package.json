@@ -9,7 +9,12 @@
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux"
+    "build:linux": "electron-builder --linux",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "ci": "npm run lint && npm run format:check"
   },
   "keywords": [
     "pixel-art",
@@ -22,7 +27,9 @@
   "license": "GPL-3.0-or-later",
   "devDependencies": {
     "electron": "^13.1.7",
-    "electron-builder": "^22.11.7"
+    "electron-builder": "^22.11.7",
+    "eslint": "^8.57.1",
+    "prettier": "^3.3.3"
   },
   "dependencies": {
     "gif.js": "^0.2.0"

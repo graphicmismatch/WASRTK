@@ -1,7 +1,12 @@
 const fs = require('fs');
 const { ipcMain, desktopCapturer } = require('electron');
 const { THUMBNAIL_SIZE } = require('./constants');
-const { loadThemeConfig, saveThemeConfig, resetThemeConfig, getThemeConfigPath } = require('./theme-config');
+const {
+  loadThemeConfig,
+  saveThemeConfig,
+  resetThemeConfig,
+  getThemeConfigPath,
+} = require('./theme-config');
 
 function mapScreenSource(source) {
   return {
@@ -9,14 +14,14 @@ function mapScreenSource(source) {
     name: source.name,
     thumbnail: source.thumbnail.toDataURL(),
     display_id: source.display_id,
-    appIcon: source.appIcon ? source.appIcon.toDataURL() : null
+    appIcon: source.appIcon ? source.appIcon.toDataURL() : null,
   };
 }
 
 async function getScreenSources(types) {
   const sources = await desktopCapturer.getSources({
     types,
-    thumbnailSize: THUMBNAIL_SIZE
+    thumbnailSize: THUMBNAIL_SIZE,
   });
 
   return sources.map(mapScreenSource);
@@ -94,5 +99,5 @@ function registerFileHandlers({ onThemeUpdated } = {}) {
 
 module.exports = {
   registerScreenCaptureHandlers,
-  registerFileHandlers
+  registerFileHandlers,
 };

@@ -49,6 +49,14 @@ The repo currently ships Electron `13.1.7` and `gif.js` as its only runtime depe
 - `index.html` and `styles.css` define the main UI
 - `theme-window.html` and `theme-window.js` provide the theme editor window
 
+## Project task list (industry-standard improvements)
+
+- [x] Add baseline engineering quality gates (ESLint, Prettier, EditorConfig, CI workflow)
+- [ ] Add automated unit tests for core renderer/tool behavior
+- [ ] Add end-to-end smoke test coverage for key editor flows
+- [ ] Add release automation with versioned changelog generation
+- [ ] Add dependency/security scanning (npm audit + code scanning)
+
 ## License
 
 WASRTK is licensed under [GPL-3.0-or-later](./LICENSE).

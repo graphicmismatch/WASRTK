@@ -5,5 +5,5 @@ const screenCaptureMode = require('./modes/screen-capture');
 module.exports = {
   ...settings,
   ...imageMode,
-  ...screenCaptureMode
+  ...screenCaptureMode,
 };

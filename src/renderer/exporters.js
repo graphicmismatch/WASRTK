@@ -5,7 +5,7 @@ const MIME_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
-  '.bmp': 'image/bmp'
+  '.bmp': 'image/bmp',
 };
 
 function getMimeType(fileExtension) {
@@ -55,7 +55,7 @@ function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas,
       workerScript: './node_modules/gif.js/dist/gif.worker.js',
       transparent: null,
       background: null,
-      dither: false
+      dither: false,
     });
 
     frames.forEach((frame) => {
@@ -93,5 +93,5 @@ module.exports = {
   getMimeType,
   saveAsPngSequence,
   saveAsGif,
-  drawVisibleLayersToContext
+  drawVisibleLayersToContext,
 };

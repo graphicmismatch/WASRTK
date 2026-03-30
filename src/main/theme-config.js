@@ -19,7 +19,7 @@ const DEFAULT_THEME = {
   'frame-drag-outline': 'rgba(234, 240, 216, 0.35)',
   'brush-preview': 'rgba(255, 255, 255, 0.3)',
   'brush-preview-pixel': 'rgba(255, 255, 255, 0.6)',
-  'brush-preview-border': 'rgba(0, 0, 0, 0.8)'
+  'brush-preview-border': 'rgba(0, 0, 0, 0.8)',
 };
 
 function getThemeConfigPath() {
@@ -39,7 +39,8 @@ function sanitizeTheme(theme) {
 
   return Object.keys(DEFAULT_THEME).reduce((accumulator, key) => {
     const value = theme[key];
-    accumulator[key] = typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_THEME[key];
+    accumulator[key] =
+      typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_THEME[key];
     return accumulator;
   }, {});
 }
@@ -79,5 +80,5 @@ module.exports = {
   loadThemeConfig,
   saveThemeConfig,
   resetThemeConfig,
-  sanitizeTheme
+  sanitizeTheme,
 };

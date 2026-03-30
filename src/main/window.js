@@ -34,7 +34,7 @@ function createWindowController({ getWindowOptions, loadFile }) {
   async function showOpenDialogAndSend({ filters, channel }) {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],
-      filters
+      filters,
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
@@ -51,10 +51,12 @@ function createWindowController({ getWindowOptions, loadFile }) {
   }
 
   function setupPermissions() {
-    mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-      const allowedPermissions = ['media', 'desktop-capture', 'display-capture'];
-      callback(allowedPermissions.includes(permission));
-    });
+    mainWindow.webContents.session.setPermissionRequestHandler(
+      (webContents, permission, callback) => {
+        const allowedPermissions = ['media', 'desktop-capture', 'display-capture'];
+        callback(allowedPermissions.includes(permission));
+      }
+    );
 
     mainWindow.webContents.on('permission-request', (event, webContents, permission, callback) => {
       if (permission === 'desktop-capture' || permission === 'display-capture') {
@@ -96,7 +98,7 @@ function createWindowController({ getWindowOptions, loadFile }) {
       minHeight: 640,
       parent: mainWindow || undefined,
       title: 'WASRTK Theme Settings',
-      show: false
+      show: false,
     });
 
     themeWindow.removeMenu();
@@ -125,10 +127,10 @@ function createWindowController({ getWindowOptions, loadFile }) {
     menuAction,
     openThemeSettingsWindow,
     showOpenDialogAndSend,
-    showSaveDialogAndSend
+    showSaveDialogAndSend,
   };
 }
 
 module.exports = {
-  createWindowController
+  createWindowController,
 };

@@ -15,7 +15,7 @@ module.exports = {
   },
   onStop(app) {
     app.commitStrokeLayer({
-      compositeOperation: 'destination-out'
+      compositeOperation: 'destination-out',
     });
   },
   drawPoint(app, { ctx, coords }) {
@@ -26,7 +26,13 @@ module.exports = {
     ctx.fillStyle = 'rgba(0,0,0,1)';
 
     if (!app.isAntialiasingEnabled()) {
-      app.drawPixelPerfectBrushStamp(ctx, coords.x, coords.y, app.getBrushSize(), app.getBrushShape());
+      app.drawPixelPerfectBrushStamp(
+        ctx,
+        coords.x,
+        coords.y,
+        app.getBrushSize(),
+        app.getBrushShape()
+      );
       return;
     }
 
@@ -81,5 +87,5 @@ module.exports = {
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
-  }
+  },
 };

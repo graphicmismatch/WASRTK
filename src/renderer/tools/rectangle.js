@@ -14,5 +14,5 @@ module.exports = {
       app.commitShape(startShape, lastMousePos, 'rectangle');
       app.clearOverlay();
     }
-  }
+  },
 };

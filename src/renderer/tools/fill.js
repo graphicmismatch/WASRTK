@@ -8,5 +8,5 @@ module.exports = {
     if (!useStrokeCtx) {
       app.floodFill(ctx, coords.x, coords.y, app.getCurrentColor());
     }
-  }
+  },
 };

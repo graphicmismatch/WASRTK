@@ -20,7 +20,7 @@ function parseColorValue(value) {
     return {
       format: 'hex',
       hex: normalizedValue.toLowerCase(),
-      alpha: 1
+      alpha: 1,
     };
   }
 
@@ -36,14 +36,14 @@ function parseColorValue(value) {
     return {
       format: parts.length === 4 ? 'rgba' : 'rgb',
       hex: `#${channelToHex(red)}${channelToHex(green)}${channelToHex(blue)}`,
-      alpha: parsedAlpha
+      alpha: parsedAlpha,
     };
   }
 
   return {
     format: 'hex',
     hex: '#000000',
-    alpha: 1
+    alpha: 1,
   };
 }
 
@@ -79,28 +79,31 @@ function populateThemeControls(theme) {
 }
 
 function collectThemeFromControls(currentTheme) {
-  return THEME_FIELDS.reduce((accumulator, { key, type }) => {
-    const input = document.querySelector(`[data-theme-key="${key}"]`);
+  return THEME_FIELDS.reduce(
+    (accumulator, { key, type }) => {
+      const input = document.querySelector(`[data-theme-key="${key}"]`);
 
-    if (!input) {
-      accumulator[key] = currentTheme[key];
+      if (!input) {
+        accumulator[key] = currentTheme[key];
+        return accumulator;
+      }
+
+      if (type === 'rgba') {
+        const alphaInput = document.querySelector(`[data-theme-alpha-key="${key}"]`);
+        const alpha = alphaInput ? Number(alphaInput.value) / 100 : 1;
+        const { hex } = parseColorValue(input.value);
+        const red = parseInt(hex.slice(1, 3), 16);
+        const green = parseInt(hex.slice(3, 5), 16);
+        const blue = parseInt(hex.slice(5, 7), 16);
+        accumulator[key] = rgbaStringFromParts({ r: red, g: green, b: blue, a: alpha });
+        return accumulator;
+      }
+
+      accumulator[key] = input.value.trim();
       return accumulator;
-    }
-
-    if (type === 'rgba') {
-      const alphaInput = document.querySelector(`[data-theme-alpha-key="${key}"]`);
-      const alpha = alphaInput ? Number(alphaInput.value) / 100 : 1;
-      const { hex } = parseColorValue(input.value);
-      const red = parseInt(hex.slice(1, 3), 16);
-      const green = parseInt(hex.slice(3, 5), 16);
-      const blue = parseInt(hex.slice(5, 7), 16);
-      accumulator[key] = rgbaStringFromParts({ r: red, g: green, b: blue, a: alpha });
-      return accumulator;
-    }
-
-    accumulator[key] = input.value.trim();
-    return accumulator;
-  }, { ...currentTheme });
+    },
+    { ...currentTheme }
+  );
 }
 
 function buildThemeFieldsMarkup() {
@@ -175,5 +178,5 @@ async function initializeThemeWindow() {
 }
 
 module.exports = {
-  initializeThemeWindow
+  initializeThemeWindow,
 };

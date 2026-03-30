@@ -15,14 +15,18 @@ function loadReferenceFromBlob(app, api, blob, sourceName) {
     const img = new Image();
     img.onload = () => {
       api.setImage(img);
-      api.setPosition((api.getCanvasWidth() - img.width) / 2, (api.getCanvasHeight() - img.height) / 2);
+      api.setPosition(
+        (api.getCanvasWidth() - img.width) / 2,
+        (api.getCanvasHeight() - img.height) / 2
+      );
       api.setScale(1.0);
 
       syncReferenceUI(e.target.result, api.getScale());
 
       if (!api.isVisible()) {
         api.setVisible(true);
-        document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
+        document.getElementById('toggleReferenceBtn').innerHTML =
+          '<i class="fas fa-eye-slash"></i>';
       }
 
       app.updateReferencePreview();
@@ -94,5 +98,5 @@ function loadReferenceImage(app) {
 module.exports = {
   loadReferenceImage,
   loadReferenceFromBlob,
-  updateReferenceImageOnly
+  updateReferenceImageOnly,
 };

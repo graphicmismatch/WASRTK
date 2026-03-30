@@ -1,7 +1,7 @@
 function parseProjectJson(rawData) {
   let jsonString = rawData;
 
-  if (jsonString.charCodeAt(0) === 0xFEFF) {
+  if (jsonString.charCodeAt(0) === 0xfeff) {
     jsonString = jsonString.slice(1);
   }
 
@@ -10,7 +10,9 @@ function parseProjectJson(rawData) {
 
 function validateProjectData(projectData) {
   if (!projectData.frames || !projectData.layers || !projectData.settings) {
-    throw new Error('Invalid project file format. Missing required fields: frames, layers, or settings.');
+    throw new Error(
+      'Invalid project file format. Missing required fields: frames, layers, or settings.'
+    );
   }
 }
 
@@ -21,8 +23,8 @@ function buildProjectData({
   settings,
   metadata = {
     author: 'WASRTK',
-    description: 'WASRTK pixel art and animation project'
-  }
+    description: 'WASRTK pixel art and animation project',
+  },
 }) {
   const now = new Date().toISOString();
 
@@ -39,21 +41,21 @@ function buildProjectData({
         name: layer.name,
         visible: layer.visible,
         locked: layer.locked,
-        data: layer.canvas.toDataURL('image/png')
-      }))
+        data: layer.canvas.toDataURL('image/png'),
+      })),
     })),
     layers: layers.map((layer) => ({
       id: layer.id,
       name: layer.name,
       visible: layer.visible,
-      locked: layer.locked
+      locked: layer.locked,
     })),
     settings,
     metadata: {
       created: now,
       modified: now,
-      ...metadata
-    }
+      ...metadata,
+    },
   };
 }
 
@@ -70,7 +72,7 @@ async function buildFramesFromProject({
   createCanvas,
   loadImageToCanvas,
   applyImageSmoothing,
-  fillFallbackLayer
+  fillFallbackLayer,
 }) {
   const builtFrames = [];
 
@@ -79,7 +81,7 @@ async function buildFramesFromProject({
       id: frameData.id,
       name: frameData.name,
       timestamp: frameData.timestamp,
-      layers: []
+      layers: [],
     };
 
     for (const layerData of frameData.layers) {
@@ -102,7 +104,7 @@ async function buildFramesFromProject({
         name: layerData.name,
         visible: layerData.visible,
         locked: layerData.locked,
-        canvas
+        canvas,
       });
     }
 
@@ -119,13 +121,14 @@ function normalizeProjectSettings(settings = {}) {
     onionSkinningRange: settings.onionSkinningRange || 3,
     referenceOpacity: settings.referenceOpacity || 0.5,
     referenceVisible: settings.referenceVisible || false,
-    antialiasingEnabled: settings.antialiasingEnabled !== undefined ? settings.antialiasingEnabled : true,
+    antialiasingEnabled:
+      settings.antialiasingEnabled !== undefined ? settings.antialiasingEnabled : true,
     currentTool: settings.currentTool || 'pen',
     currentColor: settings.currentColor || '#000000',
     currentOpacity: settings.currentOpacity || 1.0,
     brushSize: settings.brushSize || 1,
     brushShape: settings.brushShape || 'circle',
-    zoom: settings.zoom || 1
+    zoom: settings.zoom || 1,
   };
 }
 
@@ -135,5 +138,5 @@ module.exports = {
   buildProjectData,
   serializeProjectData,
   buildFramesFromProject,
-  normalizeProjectSettings
+  normalizeProjectSettings,
 };

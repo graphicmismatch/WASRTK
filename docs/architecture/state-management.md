@@ -78,10 +78,7 @@ The top-level `layers` array stores per-layer metadata shared across frames:
 
 ```js
 {
-  id,
-  name,
-  visible,
-  locked
+  (id, name, visible, locked);
 }
 ```
 

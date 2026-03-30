@@ -15,7 +15,7 @@ const THEME_FIELDS = [
   { key: 'frame-drag-outline', label: 'Frame drag outline', type: 'rgba' },
   { key: 'brush-preview', label: 'Brush preview', type: 'rgba' },
   { key: 'brush-preview-pixel', label: 'Brush pixel preview', type: 'rgba' },
-  { key: 'brush-preview-border', label: 'Brush preview border', type: 'rgba' }
+  { key: 'brush-preview-border', label: 'Brush preview border', type: 'rgba' },
 ];
 
 function applyTheme(theme) {
@@ -52,7 +52,7 @@ function initializeThemeSync(onThemeApplied) {
 
     return {
       getTheme: () => currentTheme,
-      dispose: () => ipcRenderer.removeListener('theme-config-updated', handleThemeUpdate)
+      dispose: () => ipcRenderer.removeListener('theme-config-updated', handleThemeUpdate),
     };
   });
 }
@@ -61,5 +61,5 @@ module.exports = {
   THEME_FIELDS,
   applyTheme,
   loadThemeState,
-  initializeThemeSync
+  initializeThemeSync,
 };

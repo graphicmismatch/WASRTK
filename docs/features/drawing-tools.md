@@ -75,7 +75,7 @@ Each tool module exports an object with at least:
 
 ```js
 {
-  id: 'tool-id'
+  id: 'tool-id';
 }
 ```
 

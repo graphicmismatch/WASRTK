@@ -7,7 +7,7 @@ const { createWindowController } = require('./src/main/window');
 
 const windowController = createWindowController({
   getWindowOptions: () => getWindowOptions(__dirname),
-  loadFile: 'index.html'
+  loadFile: 'index.html',
 });
 
 app.whenReady().then(() => {
@@ -21,7 +21,7 @@ app.whenReady().then(() => {
     openAndSend: windowController.showOpenDialogAndSend,
     saveAndSend: windowController.showSaveDialogAndSend,
     getMainWindow: windowController.getMainWindow,
-    openThemeSettingsWindow: windowController.openThemeSettingsWindow
+    openThemeSettingsWindow: windowController.openThemeSettingsWindow,
   });
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));

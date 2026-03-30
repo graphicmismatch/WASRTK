@@ -1,0 +1,7 @@
+dist/
+build/
+out/
+node_modules/
+coverage/
+package-lock.json
+assets/

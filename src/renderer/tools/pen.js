@@ -23,7 +23,13 @@ module.exports = {
     const isSquareBrush = app.getBrushShape() === 'square';
 
     if (!app.isAntialiasingEnabled()) {
-      app.drawPixelPerfectBrushStamp(ctx, coords.x, coords.y, app.getBrushSize(), app.getBrushShape());
+      app.drawPixelPerfectBrushStamp(
+        ctx,
+        coords.x,
+        coords.y,
+        app.getBrushSize(),
+        app.getBrushShape()
+      );
       return;
     }
 
@@ -76,5 +82,5 @@ module.exports = {
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
-  }
+  },
 };

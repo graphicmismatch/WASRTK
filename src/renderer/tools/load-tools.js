@@ -19,5 +19,5 @@ function loadTools() {
 }
 
 module.exports = {
-  loadTools
+  loadTools,
 };

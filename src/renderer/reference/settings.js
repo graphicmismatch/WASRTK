@@ -1,5 +1,3 @@
-
-
 function clampPercentage(value, min, max, fallback) {
   const parsed = parseInt(value, 10);
   if (Number.isNaN(parsed)) return fallback;
@@ -30,8 +28,8 @@ function repositionReferenceFromPreview(event, app, api) {
   const scale = api.getScale();
 
   api.setPosition(
-    (api.getCanvasWidth() / 2) - (imagePointX * scale),
-    (api.getCanvasHeight() / 2) - (imagePointY * scale)
+    api.getCanvasWidth() / 2 - imagePointX * scale,
+    api.getCanvasHeight() / 2 - imagePointY * scale
   );
   api.setUserModified(true);
   app.updateReferencePreview();
@@ -61,8 +59,8 @@ function updateViewportIndicator(api, previewImage) {
 
   const imageLeft = api.getX();
   const imageTop = api.getY();
-  const imageRight = imageLeft + (image.width * scale);
-  const imageBottom = imageTop + (image.height * scale);
+  const imageRight = imageLeft + image.width * scale;
+  const imageBottom = imageTop + image.height * scale;
   const canvasLeft = 0;
   const canvasTop = 0;
   const canvasRight = api.getCanvasWidth();
@@ -80,10 +78,14 @@ function updateViewportIndicator(api, previewImage) {
 
   const imageDisplayLeft = imageRect.left - containerRect.left;
   const imageDisplayTop = imageRect.top - containerRect.top;
-  const rawLeft = imageDisplayLeft + (((visibleLeft - imageLeft) / (image.width * scale)) * imageRect.width);
-  const rawTop = imageDisplayTop + (((visibleTop - imageTop) / (image.height * scale)) * imageRect.height);
-  const rawRight = rawLeft + (((visibleRight - visibleLeft) / (image.width * scale)) * imageRect.width);
-  const rawBottom = rawTop + (((visibleBottom - visibleTop) / (image.height * scale)) * imageRect.height);
+  const rawLeft =
+    imageDisplayLeft + ((visibleLeft - imageLeft) / (image.width * scale)) * imageRect.width;
+  const rawTop =
+    imageDisplayTop + ((visibleTop - imageTop) / (image.height * scale)) * imageRect.height;
+  const rawRight =
+    rawLeft + ((visibleRight - visibleLeft) / (image.width * scale)) * imageRect.width;
+  const rawBottom =
+    rawTop + ((visibleBottom - visibleTop) / (image.height * scale)) * imageRect.height;
 
   const clampedLeft = Math.max(0, Math.min(rawLeft, containerRect.width));
   const clampedTop = Math.max(0, Math.min(rawTop, containerRect.height));
@@ -103,28 +105,47 @@ function updateViewportIndicator(api, previewImage) {
 }
 
 function bindReferenceSettingsEvents(app, api) {
-  document.getElementById('toggleReferenceBtn').addEventListener('click', () => app.toggleReference());
+  document
+    .getElementById('toggleReferenceBtn')
+    .addEventListener('click', () => app.toggleReference());
   document.getElementById('resetReferenceBtn').addEventListener('click', () => {
     if (api.getImage() && api.isVisible()) {
       app.resetReferencePosition();
     }
   });
-  document.getElementById('clearReferenceBtn').addEventListener('click', () => app.clearReferenceImage());
+  document
+    .getElementById('clearReferenceBtn')
+    .addEventListener('click', () => app.clearReferenceImage());
   document.getElementById('referenceOpacity').addEventListener('input', (e) => {
-    const opacityPercentage = clampPercentage(e.target.value, 0, 100, Math.round(api.getOpacity() * 100));
+    const opacityPercentage = clampPercentage(
+      e.target.value,
+      0,
+      100,
+      Math.round(api.getOpacity() * 100)
+    );
     api.setOpacity(opacityPercentage / 100);
     setReferenceOpacityInputValue(opacityPercentage);
     app.renderCurrentFrame();
   });
   document.getElementById('referenceOpacityValue').addEventListener('change', (e) => {
-    const opacityPercentage = clampPercentage(e.target.value, 0, 100, Math.round(api.getOpacity() * 100));
+    const opacityPercentage = clampPercentage(
+      e.target.value,
+      0,
+      100,
+      Math.round(api.getOpacity() * 100)
+    );
     document.getElementById('referenceOpacity').value = opacityPercentage;
     setReferenceOpacityInputValue(opacityPercentage);
     api.setOpacity(opacityPercentage / 100);
     app.renderCurrentFrame();
   });
   document.getElementById('referenceZoom').addEventListener('input', (e) => {
-    const zoomPercentage = clampPercentage(e.target.value, 10, 500, Math.round(api.getScale() * 100));
+    const zoomPercentage = clampPercentage(
+      e.target.value,
+      10,
+      500,
+      Math.round(api.getScale() * 100)
+    );
     api.setScale(zoomPercentage / 100);
     api.setUserModified(true);
     setReferenceZoomInputValue(zoomPercentage);
@@ -132,7 +153,12 @@ function bindReferenceSettingsEvents(app, api) {
     app.renderCurrentFrame();
   });
   document.getElementById('referenceZoomValue').addEventListener('change', (e) => {
-    const zoomPercentage = clampPercentage(e.target.value, 10, 500, Math.round(api.getScale() * 100));
+    const zoomPercentage = clampPercentage(
+      e.target.value,
+      10,
+      500,
+      Math.round(api.getScale() * 100)
+    );
     document.getElementById('referenceZoom').value = zoomPercentage;
     setReferenceZoomInputValue(zoomPercentage);
     api.setScale(zoomPercentage / 100);
@@ -222,5 +248,5 @@ module.exports = {
   clearReferenceImage,
   updateReferencePreview,
   setReferenceOpacityInputValue,
-  setReferenceZoomInputValue
+  setReferenceZoomInputValue,
 };

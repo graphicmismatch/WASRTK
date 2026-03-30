@@ -6,7 +6,7 @@ function showAboutDialog(getMainWindow) {
     type: 'info',
     title: 'About WASRTK',
     message: 'WASRTK',
-    detail: 'A simple pixel art and animation tool built with Electron.'
+    detail: 'A simple pixel art and animation tool built with Electron.',
   });
 }
 
@@ -18,16 +18,22 @@ function buildToolsSubmenu(menuAction) {
     ['Circle Tool', 'circle'],
     ['Fill Tool', 'fill'],
     ['Eraser Tool', 'eraser'],
-    ['Selection Tool', 'selection']
+    ['Selection Tool', 'selection'],
   ];
 
   return tools.map(([label, tool]) => ({
     label,
-    click: menuAction('select-tool', tool)
+    click: menuAction('select-tool', tool),
   }));
 }
 
-function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindow, openThemeSettingsWindow }) {
+function createMenuTemplate({
+  menuAction,
+  openAndSend,
+  saveAndSend,
+  getMainWindow,
+  openThemeSettingsWindow,
+}) {
   const template = [
     {
       label: 'File',
@@ -36,33 +42,41 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
         {
           label: 'Open Reference Image',
           accelerator: 'CmdOrCtrl+Shift+R',
-          click: async () => openAndSend({ filters: FILE_FILTERS.image, channel: 'open-reference-image' })
+          click: async () =>
+            openAndSend({ filters: FILE_FILTERS.image, channel: 'open-reference-image' }),
         },
         {
           label: 'Load Project',
           accelerator: 'CmdOrCtrl+Shift+O',
-          click: async () => openAndSend({ filters: FILE_FILTERS.project, channel: 'load-project' })
+          click: async () =>
+            openAndSend({ filters: FILE_FILTERS.project, channel: 'load-project' }),
         },
         {
           label: 'Save Project',
           accelerator: 'CmdOrCtrl+S',
-          click: async () => saveAndSend({ filters: FILE_FILTERS.projectSave, channel: 'save-project' })
+          click: async () =>
+            saveAndSend({ filters: FILE_FILTERS.projectSave, channel: 'save-project' }),
         },
         {
           label: 'Save Animation',
           accelerator: 'CmdOrCtrl+Shift+S',
-          click: async () => saveAndSend({ filters: FILE_FILTERS.animationSave, channel: 'save-animation' })
+          click: async () =>
+            saveAndSend({ filters: FILE_FILTERS.animationSave, channel: 'save-animation' }),
         },
         { type: 'separator' },
-        { label: 'Exit', accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q', click: () => app.quit() }
-      ]
+        {
+          label: 'Exit',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+          click: () => app.quit(),
+        },
+      ],
     },
     {
       label: 'Edit',
       submenu: [
         { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: menuAction('undo') },
-        { label: 'Redo', accelerator: 'CmdOrCtrl+Y', click: menuAction('redo') }
-      ]
+        { label: 'Redo', accelerator: 'CmdOrCtrl+Y', click: menuAction('redo') },
+      ],
     },
     {
       label: 'View',
@@ -77,8 +91,8 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
         { type: 'separator' },
         { label: 'Theme Settings', accelerator: 'CmdOrCtrl+Alt+T', click: openThemeSettingsWindow },
         { type: 'separator' },
-        { role: 'togglefullscreen', label: 'Toggle Full Screen' }
-      ]
+        { role: 'togglefullscreen', label: 'Toggle Full Screen' },
+      ],
     },
     {
       label: 'Animation',
@@ -88,34 +102,46 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
         { label: 'Delete Frame', accelerator: 'Delete', click: menuAction('delete-frame') },
         { type: 'separator' },
         { label: 'Play Animation', accelerator: 'Space', click: menuAction('play-animation') },
-        { label: 'Stop Animation', accelerator: 'Escape', click: menuAction('stop-animation') }
-      ]
+        { label: 'Stop Animation', accelerator: 'Escape', click: menuAction('stop-animation') },
+      ],
     },
     {
       label: 'Layers',
       submenu: [
         { label: 'Move Layer Up', accelerator: 'CmdOrCtrl+Up', click: menuAction('move-layer-up') },
-        { label: 'Move Layer Down', accelerator: 'CmdOrCtrl+Down', click: menuAction('move-layer-down') },
-        { label: 'Flatten Layer', accelerator: 'CmdOrCtrl+E', click: menuAction('flatten-layer') }
-      ]
+        {
+          label: 'Move Layer Down',
+          accelerator: 'CmdOrCtrl+Down',
+          click: menuAction('move-layer-down'),
+        },
+        { label: 'Flatten Layer', accelerator: 'CmdOrCtrl+E', click: menuAction('flatten-layer') },
+      ],
     },
     {
       label: 'Reference',
       submenu: [
-        { label: 'Reset Reference Position', accelerator: 'CmdOrCtrl+R', click: menuAction('reset-reference') },
-        { label: 'Toggle Antialiasing', accelerator: 'CmdOrCtrl+A', click: menuAction('toggle-antialiasing') }
-      ]
+        {
+          label: 'Reset Reference Position',
+          accelerator: 'CmdOrCtrl+R',
+          click: menuAction('reset-reference'),
+        },
+        {
+          label: 'Toggle Antialiasing',
+          accelerator: 'CmdOrCtrl+A',
+          click: menuAction('toggle-antialiasing'),
+        },
+      ],
     },
     {
       label: 'Tools',
-      submenu: buildToolsSubmenu(menuAction)
-    }
+      submenu: buildToolsSubmenu(menuAction),
+    },
   ];
 
   if (process.platform === 'darwin') {
     template.push({
       label: 'Help',
-      submenu: [{ label: 'About WASRTK', click: () => showAboutDialog(getMainWindow) }]
+      submenu: [{ label: 'About WASRTK', click: () => showAboutDialog(getMainWindow) }],
     });
   }
 
@@ -123,5 +149,5 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
 }
 
 module.exports = {
-  createMenuTemplate
+  createMenuTemplate,
 };

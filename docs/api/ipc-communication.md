@@ -28,8 +28,7 @@ Defined in `src/main/ipc.js`.
 
 ```js
 {
-  filePath,
-  data
+  (filePath, data);
 }
 ```
 

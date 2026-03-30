@@ -7,17 +7,17 @@ const THUMBNAIL_SIZE = { width: 150, height: 150 };
 const FILE_FILTERS = {
   image: [
     { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp'] },
-    { name: 'All Files', extensions: ['*'] }
+    { name: 'All Files', extensions: ['*'] },
   ],
   project: [
     { name: 'WASRTK Projects', extensions: ['wasrtk'] },
-    { name: 'All Files', extensions: ['*'] }
+    { name: 'All Files', extensions: ['*'] },
   ],
   projectSave: [{ name: 'WASRTK Projects', extensions: ['wasrtk'] }],
   animationSave: [
     { name: 'PNG Sequence', extensions: ['png'] },
-    { name: 'GIF Animation', extensions: ['gif'] }
-  ]
+    { name: 'GIF Animation', extensions: ['gif'] },
+  ],
 };
 
 function getWindowOptions(baseDir) {
@@ -31,10 +31,10 @@ function getWindowOptions(baseDir) {
       contextIsolation: false,
       enableRemoteModule: true,
       webSecurity: false,
-      allowRunningInsecureContent: true
+      allowRunningInsecureContent: true,
     },
     titleBarStyle: 'default',
-    show: false
+    show: false,
   };
 
   const packagedIconPath = path.join(process.resourcesPath, 'assets', 'icon.png');
@@ -51,5 +51,5 @@ function getWindowOptions(baseDir) {
 module.exports = {
   THUMBNAIL_SIZE,
   FILE_FILTERS,
-  getWindowOptions
+  getWindowOptions,
 };
