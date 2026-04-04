@@ -21,7 +21,7 @@ This page documents shortcuts that are actually wired in the current repository,
 - `Delete` / `Backspace`: Clear active selection contents
 - Arrow keys: Nudge active selection by 1px
 - `Shift+Arrow`: Nudge active selection by 10px
-- `Enter`: Commit detached selection move
+- `Enter`: Commit detached selection move and clear selection state
 
 ## Tools
 

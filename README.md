@@ -25,6 +25,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Fix flood-fill accuracy so fills remain consistent across zoom levels.
 - [x] Align selection move workflow with paint.net-style drag-and-commit behavior.
 - [x] Require explicit Enter to commit detached selection moves (Escape to cancel restore).
+- [x] Reset selection state automatically after Enter commit.
 
 ## Getting started
 
