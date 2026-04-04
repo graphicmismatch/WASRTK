@@ -666,9 +666,19 @@ class WASRTK {
                 return;
             }
 
+            if (e.key === 'Enter' && activeSelection?.pendingMove) {
+                e.preventDefault();
+                this.confirmSelectionMove();
+                return;
+            }
+
             if (e.key === 'Escape' && activeSelection) {
                 e.preventDefault();
-                this.clearSelection();
+                if (activeSelection.pendingMove) {
+                    this.cancelPendingSelectionMove();
+                } else {
+                    this.clearSelection();
+                }
                 return;
             }
 
@@ -911,8 +921,11 @@ class WASRTK {
         };
     }
 
-    drawSelectionOutline(bounds) {
+    drawSelectionOutline(bounds, { showPreview = false } = {}) {
         this.clearOverlay();
+        if (showPreview && bounds.imageData) {
+            overlayCtx.putImageData(bounds.imageData, bounds.x, bounds.y);
+        }
         overlayCtx.save();
         overlayCtx.strokeStyle = '#1f9eff';
         overlayCtx.setLineDash([5, 3]);
@@ -927,7 +940,11 @@ class WASRTK {
             coords.x <= activeSelection.x + activeSelection.width &&
             coords.y >= activeSelection.y &&
             coords.y <= activeSelection.y + activeSelection.height) {
-            this.saveState();
+            if (activeSelection.pendingMove) {
+                activeSelection.originalX = activeSelection.x;
+                activeSelection.originalY = activeSelection.y;
+                activeSelection.pendingMove = false;
+            }
             selectionInteraction = {
                 mode: 'move',
                 start: coords,
@@ -963,7 +980,7 @@ class WASRTK {
             const dy = Math.round(coords.y - selectionInteraction.start.y);
             activeSelection.x = selectionInteraction.originalX + dx;
             activeSelection.y = selectionInteraction.originalY + dy;
-            this.drawSelectionOutline(activeSelection);
+            this.drawSelectionOutline(activeSelection, { showPreview: true });
         }
     }
 
@@ -993,11 +1010,13 @@ class WASRTK {
                 this.clearOverlay();
             } else {
                 const imageData = ctx.getImageData(bounds.x, bounds.y, bounds.width, bounds.height);
-                activeSelection = { ...bounds, imageData, originalX: bounds.x, originalY: bounds.y };
+                activeSelection = { ...bounds, imageData, originalX: bounds.x, originalY: bounds.y, pendingMove: false };
                 this.drawSelectionOutline(activeSelection);
             }
         } else if (selectionInteraction.mode === 'move' && activeSelection) {
-            this.applySelectionMove(activeSelection.x, activeSelection.y, { saveState: false });
+            const moved = activeSelection.x !== activeSelection.originalX || activeSelection.y !== activeSelection.originalY;
+            activeSelection.pendingMove = moved;
+            this.drawSelectionOutline(activeSelection, { showPreview: moved });
         }
 
         selectionInteraction = null;
@@ -1031,8 +1050,26 @@ class WASRTK {
         activeSelection.y = targetY;
         activeSelection.originalX = targetX;
         activeSelection.originalY = targetY;
+        activeSelection.pendingMove = false;
         this.drawSelectionOutline(activeSelection);
         this.renderCurrentFrame();
+    }
+
+    confirmSelectionMove() {
+        if (!activeSelection || !activeSelection.pendingMove) {
+            return;
+        }
+        this.applySelectionMove(activeSelection.x, activeSelection.y, { saveState: true });
+    }
+
+    cancelPendingSelectionMove() {
+        if (!activeSelection || !activeSelection.pendingMove) {
+            return;
+        }
+        activeSelection.x = activeSelection.originalX;
+        activeSelection.y = activeSelection.originalY;
+        activeSelection.pendingMove = false;
+        this.drawSelectionOutline(activeSelection);
     }
 
     clearSelection() {

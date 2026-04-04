@@ -45,6 +45,7 @@ WASRTK currently loads tool modules from `src/renderer/tools/` and exposes seven
 - Drag to create a rectangular selection on the active layer
 - Hold `Shift` while dragging to constrain to a square marquee
 - Drag inside an existing selection to move the selected pixels
+- Selection moves are non-destructive until confirmed with `Enter`
 - Copy/Cut/Paste selected pixels with standard clipboard shortcuts
 - Nudge selected pixels with arrow keys (`Shift+Arrow` = 10px step)
 - Uses a dashed overlay outline for feedback
