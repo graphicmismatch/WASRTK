@@ -1519,6 +1519,7 @@ class WASRTK {
 
     // Frame methods
     addFrame() {
+        if (activeSelection) this.clearSelection();
         const newFrame = {
             id: frames.length,
             name: `Frame ${frames.length + 1}`,
@@ -1557,6 +1558,7 @@ class WASRTK {
     }
 
     duplicateFrame() {
+        if (activeSelection) this.clearSelection();
         if (frames.length === 0) return;
         
         const duplicatedFrame = {
@@ -1591,6 +1593,7 @@ class WASRTK {
     }
 
     deleteFrame() {
+        if (activeSelection) this.clearSelection();
         if (frames.length <= 1) return;
         
         frames.splice(currentFrame, 1);
@@ -1612,6 +1615,7 @@ class WASRTK {
     }
 
     moveFrame(fromIndex, toIndex) {
+        if (activeSelection) this.clearSelection();
         if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= frames.length || toIndex >= frames.length) {
             return;
         }
@@ -1638,6 +1642,9 @@ class WASRTK {
     }
 
     selectFrame(frameIndex) {
+        if (activeSelection) {
+            this.clearSelection();
+        }
         currentFrame = frameIndex;
         this.renderCurrentFrame();
         this.updateTimeline();
@@ -1745,6 +1752,7 @@ class WASRTK {
 
     // Layer methods
     addLayer() {
+        if (activeSelection) this.clearSelection();
         this.saveStructureState(); // Save state for undo
         const newLayer = {
             id: layers.length,
@@ -1781,6 +1789,7 @@ class WASRTK {
     }
 
     deleteLayer() {
+        if (activeSelection) this.clearSelection();
         if (layers.length <= 1) return;
         
         this.saveStructureState(); // Save state for undo
@@ -1801,6 +1810,7 @@ class WASRTK {
     }
 
     moveLayerUp() {
+        if (activeSelection) this.clearSelection();
         if (currentLayer >= layers.length - 1) return;
 
         this.saveStructureState(); // Save state for undo
@@ -1819,6 +1829,7 @@ class WASRTK {
     }
 
     moveLayerDown() {
+        if (activeSelection) this.clearSelection();
         if (currentLayer <= 0) return;
 
         this.saveStructureState(); // Save state for undo
@@ -1837,6 +1848,7 @@ class WASRTK {
     }
 
     flattenLayer() {
+        if (activeSelection) this.clearSelection();
         if (currentLayer <= 0) {
             alert("Cannot flatten the bottom layer.");
             return;
@@ -1980,7 +1992,11 @@ class WASRTK {
     }
 
     selectLayer(layerIndex) {
+        if (activeSelection) {
+            this.clearSelection();
+        }
         currentLayer = layerIndex;
+        this.renderCurrentFrame();
         this.updateLayerList();
         this.updateStatusBar();
     }
@@ -2010,7 +2026,8 @@ class WASRTK {
             rectangle: 'Rectangle Tool',
             circle: 'Circle Tool',
             fill: 'Fill Tool',
-            eraser: 'Eraser Tool'
+            eraser: 'Eraser Tool',
+            selection: 'Selection Tool'
         };
         
         document.getElementById('currentTool').textContent = toolNames[currentTool] || 'Unknown Tool';
