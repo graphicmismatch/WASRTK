@@ -37,6 +37,8 @@ let selectedPalette = 'lospec-journey';
 let activeSelection = null;
 let selectionInteraction = null;
 let selectionClipboard = null;
+let paletteEditorColors = [];
+const CUSTOM_PALETTES_STORAGE_KEY = 'wasrtk-custom-palettes';
 
 // Panning state
 let isPanning = false;
@@ -70,9 +72,40 @@ const COLOR_PALETTES = {
         colors: ['#f8b195', '#f67280', '#c06c84', '#6c5b7b', '#355c7d', '#99b898', '#feceab', '#ff847c', '#e84a5f', '#2a363b']
     }
 };
+const BUILTIN_PALETTE_IDS = new Set(Object.keys(COLOR_PALETTES));
 
 let strokeCanvas = null;
 let strokeCtx = null;
+
+function normalizeHexColor(value) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const cleaned = value.trim().replace(/^#/, '').toLowerCase();
+    if (/^[0-9a-f]{3}$/.test(cleaned)) {
+        return `#${cleaned.split('').map((c) => c + c).join('')}`;
+    }
+    if (/^[0-9a-f]{6}$/.test(cleaned)) {
+        return `#${cleaned}`;
+    }
+
+    return null;
+}
+
+function dedupeColors(colors) {
+    const uniqueColors = [];
+    const seen = new Set();
+    colors.forEach((color) => {
+        const normalized = normalizeHexColor(color);
+        if (!normalized || seen.has(normalized)) {
+            return;
+        }
+        seen.add(normalized);
+        uniqueColors.push(normalized);
+    });
+    return uniqueColors;
+}
 
 // Initialize the application
 class WASRTK {
@@ -83,6 +116,7 @@ class WASRTK {
         this.initializeCanvas();
         this.initializeFrames();
         this.initializeLayers();
+        this.loadCustomPalettes();
         this.initializePaletteUI();
         this.setupEventListeners();
         this.setupIPCListeners();
@@ -295,15 +329,248 @@ class WASRTK {
             return;
         }
 
+        this.refreshPaletteSelect();
+
+        if (!COLOR_PALETTES[selectedPalette]) {
+            selectedPalette = 'lospec-journey';
+        }
+        paletteSelect.value = selectedPalette;
+        this.renderPalettePresets(selectedPalette);
+        this.renderPaletteEditorSwatches();
+    }
+
+    refreshPaletteSelect() {
+        const paletteSelect = document.getElementById('paletteSelect');
+        if (!paletteSelect) {
+            return;
+        }
+
+        paletteSelect.innerHTML = '';
         Object.entries(COLOR_PALETTES).forEach(([id, palette]) => {
             const option = document.createElement('option');
             option.value = id;
             option.textContent = palette.label;
             paletteSelect.append(option);
         });
+    }
 
-        paletteSelect.value = selectedPalette;
-        this.renderPalettePresets(selectedPalette);
+    loadCustomPalettes() {
+        const serialized = localStorage.getItem(CUSTOM_PALETTES_STORAGE_KEY);
+        if (!serialized) {
+            return;
+        }
+
+        let parsed = {};
+        try {
+            parsed = JSON.parse(serialized);
+        } catch (error) {
+            localStorage.removeItem(CUSTOM_PALETTES_STORAGE_KEY);
+            return;
+        }
+        Object.entries(parsed).forEach(([id, palette]) => {
+            if (!palette || !palette.label || !Array.isArray(palette.colors)) {
+                return;
+            }
+            const colors = dedupeColors(palette.colors);
+            if (!colors.length) {
+                return;
+            }
+            COLOR_PALETTES[id] = {
+                label: String(palette.label),
+                colors
+            };
+        });
+    }
+
+    persistCustomPalettes() {
+        const customPalettes = {};
+        Object.entries(COLOR_PALETTES).forEach(([id, palette]) => {
+            if (BUILTIN_PALETTE_IDS.has(id)) {
+                return;
+            }
+            customPalettes[id] = palette;
+        });
+        localStorage.setItem(CUSTOM_PALETTES_STORAGE_KEY, JSON.stringify(customPalettes));
+    }
+
+    buildPaletteIdFromName(name) {
+        const normalized = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const base = normalized || `palette-${Date.now()}`;
+        if (!COLOR_PALETTES[base]) {
+            return base;
+        }
+        let suffix = 2;
+        while (COLOR_PALETTES[`${base}-${suffix}`]) {
+            suffix += 1;
+        }
+        return `${base}-${suffix}`;
+    }
+
+    addOrReplacePalette({ id, name, colors, select = true }) {
+        const finalColors = dedupeColors(colors);
+        if (!name || finalColors.length === 0) {
+            return false;
+        }
+
+        const paletteId = id || this.buildPaletteIdFromName(name);
+        COLOR_PALETTES[paletteId] = {
+            label: name,
+            colors: finalColors
+        };
+        this.persistCustomPalettes();
+        this.refreshPaletteSelect();
+
+        if (select) {
+            selectedPalette = paletteId;
+            const paletteSelect = document.getElementById('paletteSelect');
+            if (paletteSelect) {
+                paletteSelect.value = paletteId;
+            }
+            this.renderPalettePresets(paletteId);
+        }
+
+        return true;
+    }
+
+    renderPaletteEditorSwatches() {
+        const container = document.getElementById('paletteEditorSwatches');
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = '';
+        paletteEditorColors.forEach((color, index) => {
+            const swatch = document.createElement('button');
+            swatch.type = 'button';
+            swatch.className = 'palette-editor-swatch';
+            swatch.style.background = color;
+            swatch.title = `${color} (click to remove)`;
+            swatch.addEventListener('click', () => {
+                paletteEditorColors.splice(index, 1);
+                this.renderPaletteEditorSwatches();
+            });
+            container.append(swatch);
+        });
+    }
+
+    parseGimpPalette(content) {
+        const colors = [];
+        content.split(/\r?\n/).forEach((line) => {
+            if (!line || line.startsWith('#') || line.startsWith('GIMP') || line.startsWith('Name:') || line.startsWith('Columns:')) {
+                return;
+            }
+            const channels = line.trim().split(/\s+/).slice(0, 3).map(Number);
+            if (channels.length < 3 || channels.some((value) => Number.isNaN(value))) {
+                return;
+            }
+            const hex = `#${channels.map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
+            colors.push(hex);
+        });
+        return dedupeColors(colors);
+    }
+
+    parseJascPal(content) {
+        const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        if (lines[0] !== 'JASC-PAL') {
+            return [];
+        }
+
+        const colors = [];
+        for (let index = 3; index < lines.length; index += 1) {
+            const channels = lines[index].split(/\s+/).map(Number);
+            if (channels.length < 3 || channels.some((value) => Number.isNaN(value))) {
+                continue;
+            }
+            const hex = `#${channels.slice(0, 3).map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
+            colors.push(hex);
+        }
+        return dedupeColors(colors);
+    }
+
+    parseHexLikeText(content) {
+        const matches = content.match(/#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b/g) || [];
+        return dedupeColors(matches);
+    }
+
+    async importPaletteFromFile(file) {
+        const extension = path.extname(file.name || '').toLowerCase();
+        const lowerName = (file.name || '').toLowerCase();
+        if (['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'].includes(extension)) {
+            await this.importPaletteFromImageFile(file);
+            return;
+        }
+        if (extension === '.aco' || extension === '.ase' || extension === '.act' || lowerName.includes('photoshop')) {
+            throw new Error('Photoshop palette formats are not supported.');
+        }
+
+        const text = await file.text();
+        if (/^;\s*paint\.net palette file/m.test(text)) {
+            throw new Error('Paint.NET palette format is not supported.');
+        }
+
+        let colors = [];
+        if (extension === '.json') {
+            const parsed = JSON.parse(text);
+            if (Array.isArray(parsed)) {
+                colors = dedupeColors(parsed);
+            } else if (Array.isArray(parsed.colors)) {
+                colors = dedupeColors(parsed.colors);
+            }
+        } else if (extension === '.gpl') {
+            colors = this.parseGimpPalette(text);
+        } else if (extension === '.pal') {
+            colors = this.parseJascPal(text);
+        } else {
+            colors = this.parseHexLikeText(text);
+        }
+
+        if (!colors.length) {
+            throw new Error('No valid colors were found in this file.');
+        }
+
+        const baseName = path.basename(file.name, extension).trim() || 'Imported Palette';
+        this.addOrReplacePalette({ name: baseName, colors });
+    }
+
+    async importPaletteFromImageFile(file) {
+        const imageUrl = URL.createObjectURL(file);
+        const img = await new Promise((resolve, reject) => {
+            const instance = new Image();
+            instance.onload = () => resolve(instance);
+            instance.onerror = () => reject(new Error('Unable to load image for palette extraction.'));
+            instance.src = imageUrl;
+        });
+
+        const tempCanvas = document.createElement('canvas');
+        const maxSize = 128;
+        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        tempCanvas.width = Math.max(1, Math.round(img.width * scale));
+        tempCanvas.height = Math.max(1, Math.round(img.height * scale));
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        const { data } = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const colors = [];
+        for (let index = 0; index < data.length; index += 4) {
+            if (data[index + 3] < 10) {
+                continue;
+            }
+            const hex = `#${[data[index], data[index + 1], data[index + 2]].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+            colors.push(hex);
+            if (colors.length >= 512) {
+                break;
+            }
+        }
+
+        URL.revokeObjectURL(imageUrl);
+        const uniqueColors = dedupeColors(colors).slice(0, 64);
+        if (!uniqueColors.length) {
+            throw new Error('No visible colors could be extracted from this image.');
+        }
+
+        const extension = path.extname(file.name || '');
+        const baseName = `${path.basename(file.name, extension) || 'Image'} Palette`;
+        this.addOrReplacePalette({ name: baseName, colors: uniqueColors });
     }
 
     renderPalettePresets(paletteId) {
@@ -352,6 +619,81 @@ class WASRTK {
             }
             this.setColor(preset.dataset.color);
             document.getElementById('colorPicker').value = preset.dataset.color;
+        });
+
+        const openPaletteEditorBtn = document.getElementById('openPaletteEditorBtn');
+        const paletteEditor = document.getElementById('paletteEditor');
+        openPaletteEditorBtn.addEventListener('click', () => {
+            paletteEditor.hidden = !paletteEditor.hidden;
+        });
+
+        document.getElementById('addPaletteColorBtn').addEventListener('click', () => {
+            const color = normalizeHexColor(document.getElementById('paletteEditorColorInput').value);
+            if (!color || paletteEditorColors.includes(color)) {
+                return;
+            }
+            paletteEditorColors.push(color);
+            this.renderPaletteEditorSwatches();
+        });
+
+        document.getElementById('clearPaletteEditorBtn').addEventListener('click', () => {
+            paletteEditorColors = [];
+            this.renderPaletteEditorSwatches();
+        });
+
+        document.getElementById('savePaletteBtn').addEventListener('click', () => {
+            const paletteName = document.getElementById('paletteNameInput').value.trim();
+            if (!paletteName) {
+                alert('Please provide a palette name.');
+                return;
+            }
+            if (!paletteEditorColors.length) {
+                alert('Add at least one color to save a palette.');
+                return;
+            }
+
+            this.addOrReplacePalette({
+                name: paletteName,
+                colors: paletteEditorColors
+            });
+            paletteEditorColors = [];
+            document.getElementById('paletteNameInput').value = '';
+            this.renderPaletteEditorSwatches();
+            paletteEditor.hidden = true;
+        });
+
+        const paletteFileInput = document.getElementById('paletteFileInput');
+        document.getElementById('importPaletteBtn').addEventListener('click', () => {
+            paletteFileInput.value = '';
+            paletteFileInput.click();
+        });
+        paletteFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) {
+                return;
+            }
+            try {
+                await this.importPaletteFromFile(file);
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+
+        const paletteImageInput = document.getElementById('paletteImageInput');
+        document.getElementById('importPaletteImageBtn').addEventListener('click', () => {
+            paletteImageInput.value = '';
+            paletteImageInput.click();
+        });
+        paletteImageInput.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) {
+                return;
+            }
+            try {
+                await this.importPaletteFromImageFile(file);
+            } catch (error) {
+                alert(error.message);
+            }
         });
 
         // Brush size
