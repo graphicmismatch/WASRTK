@@ -4,18 +4,46 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
+HOST_PLATFORM="$(uname -s)"
+
+BUILD_TARGETS=(
+  "linux:build:linux"
+  "win:build:win"
+  "mac:build:mac"
+)
 
 cd "$ROOT_DIR"
 
-npm run build:linux
+FAILED_TARGETS=()
 
-APPIMAGE_PATH="$(find "$DIST_DIR" -maxdepth 1 -type f -name '*.AppImage' | sort | tail -n 1)"
+for target in "${BUILD_TARGETS[@]}"; do
+  platform="${target%%:*}"
+  script_name="${target#*:}"
 
-if [[ -z "${APPIMAGE_PATH:-}" ]]; then
-  echo "No AppImage found in $DIST_DIR" >&2
+  echo "Building ${platform} artifacts with npm run ${script_name}..."
+
+  if ! npm run "$script_name"; then
+    FAILED_TARGETS+=("$platform")
+    echo "Build failed for ${platform}." >&2
+  fi
+done
+
+if ((${#FAILED_TARGETS[@]} > 0)); then
+  printf 'Builds failed for: %s\n' "${FAILED_TARGETS[*]}" >&2
   exit 1
 fi
 
-chmod +x "$APPIMAGE_PATH"
-echo "Launching AppImage with --no-sandbox for local testing."
-"$APPIMAGE_PATH" --no-sandbox
+if [[ "$HOST_PLATFORM" != "Linux" ]]; then
+  echo "All desktop builds completed. Skipping AppImage launch on ${HOST_PLATFORM}."
+  exit 0
+fi
+
+UNPACKED_APP_PATH="$DIST_DIR/linux-unpacked/wasrtk"
+
+if [[ ! -x "$UNPACKED_APP_PATH" ]]; then
+  echo "No unpacked Linux binary found at $UNPACKED_APP_PATH" >&2
+  exit 1
+fi
+
+echo "Launching unpacked Linux build with the sandbox enabled."
+"$UNPACKED_APP_PATH"
