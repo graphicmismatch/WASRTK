@@ -16,6 +16,16 @@ This page documents shortcuts that are actually wired in the current repository,
 - `Ctrl/Cmd+Z`: Undo
 - `Ctrl/Cmd+Y`: Redo
 
+## Tools
+
+- `1`: Pen
+- `2`: Line
+- `3`: Rectangle
+- `4`: Circle
+- `5`: Fill
+- `6`: Eraser
+- `7`: Selection
+
 ## View
 
 - `Ctrl/Cmd+Alt+T`: Open Theme Settings
@@ -48,4 +58,4 @@ Note: in the current renderer implementation, both `Play Animation` and `Stop An
 
 ## Not currently wired
 
-- Number-key tool switching is shown in some UI titles but is not implemented in renderer key handling.
+- Advanced selection transforms (scale/rotate) do not have keyboard shortcuts yet.
