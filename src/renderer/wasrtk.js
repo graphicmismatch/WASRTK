@@ -669,6 +669,7 @@ class WASRTK {
             if (e.key === 'Enter' && activeSelection?.detached) {
                 e.preventDefault();
                 this.commitDetachedSelection();
+                this.clearSelection();
                 return;
             }
 
