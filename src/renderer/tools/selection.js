@@ -1,6 +1,6 @@
 module.exports = {
   id: 'selection',
-  saveStateOnStart: true,
+  saveStateOnStart: false,
   onStart(app, { coords }) {
     app.startSelectionInteraction(coords);
   },

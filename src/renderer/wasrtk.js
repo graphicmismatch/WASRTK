@@ -927,6 +927,7 @@ class WASRTK {
             coords.x <= activeSelection.x + activeSelection.width &&
             coords.y >= activeSelection.y &&
             coords.y <= activeSelection.y + activeSelection.height) {
+            this.saveState();
             selectionInteraction = {
                 mode: 'move',
                 start: coords,
@@ -980,7 +981,13 @@ class WASRTK {
         const ctx = layer.canvas.getContext('2d');
 
         if (selectionInteraction.mode === 'select') {
-            const bounds = this.normalizeSelectionBounds(selectionInteraction.start, selectionInteraction.current);
+            const rawBounds = this.normalizeSelectionBounds(selectionInteraction.start, selectionInteraction.current);
+            const bounds = {
+                x: Math.max(0, rawBounds.x),
+                y: Math.max(0, rawBounds.y),
+                width: Math.min(mainCanvas.width - Math.max(0, rawBounds.x), rawBounds.width),
+                height: Math.min(mainCanvas.height - Math.max(0, rawBounds.y), rawBounds.height)
+            };
             if (bounds.width < 1 || bounds.height < 1) {
                 activeSelection = null;
                 this.clearOverlay();
@@ -1046,12 +1053,12 @@ class WASRTK {
         };
 
         if (cut) {
-            this.saveState();
             const frame = frames[currentFrame];
             const layer = frame.layers[currentLayer];
             if (!layer || layer.locked) {
                 return;
             }
+            this.saveState();
             const ctx = layer.canvas.getContext('2d');
             ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
             this.renderCurrentFrame();
@@ -1063,16 +1070,19 @@ class WASRTK {
         if (!selectionClipboard) {
             return;
         }
-
-        this.saveState();
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
         if (!layer || layer.locked) {
             return;
         }
+        this.saveState();
         const ctx = layer.canvas.getContext('2d');
-        const pasteX = activeSelection ? Math.min(mainCanvas.width - selectionClipboard.width, activeSelection.x + 1) : 0;
-        const pasteY = activeSelection ? Math.min(mainCanvas.height - selectionClipboard.height, activeSelection.y + 1) : 0;
+        const pasteX = activeSelection
+            ? Math.max(0, Math.min(mainCanvas.width - selectionClipboard.width, activeSelection.x + 1))
+            : 0;
+        const pasteY = activeSelection
+            ? Math.max(0, Math.min(mainCanvas.height - selectionClipboard.height, activeSelection.y + 1))
+            : 0;
         ctx.putImageData(selectionClipboard.imageData, pasteX, pasteY);
         const refreshedData = ctx.getImageData(pasteX, pasteY, selectionClipboard.width, selectionClipboard.height);
         activeSelection = {
