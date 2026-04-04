@@ -666,6 +666,12 @@ class WASRTK {
                 return;
             }
 
+            if (e.key === 'Enter' && activeSelection?.detached) {
+                e.preventDefault();
+                this.commitDetachedSelection();
+                return;
+            }
+
             if (e.key === 'Escape' && activeSelection) {
                 e.preventDefault();
                 this.clearSelection();
@@ -682,7 +688,10 @@ class WASRTK {
                 e.preventDefault();
                 const step = e.shiftKey ? 10 : 1;
                 const nudge = nudgeMap[e.key];
-                this.applySelectionMove(activeSelection.x + (nudge.x * step), activeSelection.y + (nudge.y * step));
+                this.detachSelectionFromLayer();
+                activeSelection.x = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.x + (nudge.x * step)));
+                activeSelection.y = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.y + (nudge.y * step)));
+                this.drawSelectionOutline(activeSelection, { showPreview: true });
                 return;
             }
 
@@ -930,6 +939,7 @@ class WASRTK {
             coords.x <= activeSelection.x + activeSelection.width &&
             coords.y >= activeSelection.y &&
             coords.y <= activeSelection.y + activeSelection.height) {
+            this.detachSelectionFromLayer();
             selectionInteraction = {
                 mode: 'move',
                 start: coords,
@@ -995,11 +1005,18 @@ class WASRTK {
                 this.clearOverlay();
             } else {
                 const imageData = ctx.getImageData(bounds.x, bounds.y, bounds.width, bounds.height);
-                activeSelection = { ...bounds, imageData, originalX: bounds.x, originalY: bounds.y };
+                activeSelection = {
+                    ...bounds,
+                    imageData,
+                    originalX: bounds.x,
+                    originalY: bounds.y,
+                    detached: false,
+                    sourceSnapshot: null
+                };
                 this.drawSelectionOutline(activeSelection);
             }
         } else if (selectionInteraction.mode === 'move' && activeSelection) {
-            this.applySelectionMove(activeSelection.x, activeSelection.y, { saveState: true });
+            this.drawSelectionOutline(activeSelection, { showPreview: true });
         }
 
         selectionInteraction = null;
@@ -1037,7 +1054,75 @@ class WASRTK {
         this.renderCurrentFrame();
     }
 
-    clearSelection() {
+    detachSelectionFromLayer() {
+        if (!activeSelection || activeSelection.detached) {
+            return;
+        }
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+        const ctx = layer.canvas.getContext('2d');
+        activeSelection.sourceSnapshot = ctx.getImageData(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
+        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
+        activeSelection.detached = true;
+        this.renderCurrentFrame();
+    }
+
+    commitDetachedSelection() {
+        if (!activeSelection || !activeSelection.detached) {
+            return;
+        }
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+        const ctx = layer.canvas.getContext('2d');
+        if (activeSelection.sourceSnapshot) {
+            ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
+        }
+        this.saveState();
+        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
+        ctx.putImageData(activeSelection.imageData, activeSelection.x, activeSelection.y);
+        activeSelection.originalX = activeSelection.x;
+        activeSelection.originalY = activeSelection.y;
+        activeSelection.detached = false;
+        activeSelection.sourceSnapshot = null;
+        this.drawSelectionOutline(activeSelection);
+        this.renderCurrentFrame();
+    }
+
+    cancelDetachedSelection() {
+        if (!activeSelection || !activeSelection.detached) {
+            return;
+        }
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+        const ctx = layer.canvas.getContext('2d');
+        if (activeSelection.sourceSnapshot) {
+            ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
+        }
+        activeSelection.x = activeSelection.originalX;
+        activeSelection.y = activeSelection.originalY;
+        activeSelection.detached = false;
+        activeSelection.sourceSnapshot = null;
+        this.drawSelectionOutline(activeSelection);
+        this.renderCurrentFrame();
+    }
+
+    clearSelection({ commitDetached = false } = {}) {
+        if (activeSelection?.detached) {
+            if (commitDetached) {
+                this.commitDetachedSelection();
+            } else {
+                this.cancelDetachedSelection();
+            }
+        }
         activeSelection = null;
         selectionInteraction = null;
         this.clearOverlay();
