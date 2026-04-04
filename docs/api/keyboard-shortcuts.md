@@ -21,6 +21,7 @@ This page documents shortcuts that are actually wired in the current repository,
 - `Delete` / `Backspace`: Clear active selection contents
 - Arrow keys: Nudge active selection by 1px
 - `Shift+Arrow`: Nudge active selection by 10px
+- `Enter`: Confirm pending selection move
 
 ## Tools
 
@@ -31,7 +32,7 @@ This page documents shortcuts that are actually wired in the current repository,
 - `5`: Fill
 - `6`: Eraser
 - `7`: Selection
-- `Escape`: Clear active selection overlay
+- `Escape`: Cancel pending selection move (or clear selection if no pending move)
 
 ## View
 

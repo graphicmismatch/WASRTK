@@ -23,6 +23,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Fix selection edge cases (undo noise, out-of-bounds drags, locked-layer safety).
 - [x] Verify selection interactions do not interfere with frame/layer operations or other tools.
 - [x] Fix flood-fill accuracy so fills remain consistent across zoom levels.
+- [x] Keep selection moves non-destructive until explicitly confirmed.
 
 ## Getting started
 
