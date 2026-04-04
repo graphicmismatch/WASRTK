@@ -1,6 +1,6 @@
 # Drawing Tools
 
-WASRTK currently loads tool modules from `src/renderer/tools/` and exposes six tools in the main UI.
+WASRTK currently loads tool modules from `src/renderer/tools/` and exposes seven tools in the main UI.
 
 ## Available tools
 
@@ -39,6 +39,15 @@ WASRTK currently loads tool modules from `src/renderer/tools/` and exposes six t
 
 - Draws through a temporary stroke canvas and commits with `destination-out`
 - Supports brush size, antialiasing, and circle/square brush shapes
+
+### Selection
+
+- Drag to create a rectangular selection on the active layer
+- Hold `Shift` while dragging to constrain to a square marquee
+- Drag inside an existing selection to move the selected pixels
+- Copy/Cut/Paste selected pixels with standard clipboard shortcuts
+- Nudge selected pixels with arrow keys (`Shift+Arrow` = 10px step)
+- Uses a dashed overlay outline for feedback
 
 ## Shared behavior
 
@@ -91,5 +100,4 @@ Optional hooks used by the editor include:
 
 ## Current limitations
 
-- The repo does not currently include a dedicated selection tool implementation.
-- Numeric hotkeys shown in some button titles are not wired through renderer key handling in the current code.
+- Selection currently supports move only (no scale/rotate/transform handles yet).

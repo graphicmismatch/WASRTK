@@ -33,6 +33,10 @@ let lastMousePos = null; // Store last mouse position for line interpolation
 let antialiasingEnabled = true; // Global antialiasing toggle
 let fillTolerance = 0; // Tolerance for flood fill
 let draggedFrameIndex = null;
+let selectedPalette = 'lospec-journey';
+let activeSelection = null;
+let selectionInteraction = null;
+let selectionClipboard = null;
 
 // Panning state
 let isPanning = false;
@@ -48,6 +52,25 @@ const overlayCanvas = document.getElementById('overlayCanvas');
 const mainCtx = mainCanvas.getContext('2d');
 const overlayCtx = overlayCanvas.getContext('2d');
 
+const COLOR_PALETTES = {
+    'lospec-journey': {
+        label: 'Journey (Default)',
+        colors: ['#3b1725', '#73172d', '#b4202a', '#df3e23', '#fa6a0a', '#ffd541', '#fffc40', '#d6f264', '#59c135', '#14a02e', '#1a7a3e', '#24523b', '#143464', '#285cc4', '#249fde', '#20d6c7', '#ffffff', '#8b93af', '#4a5462', '#141013']
+    },
+    grayscale: {
+        label: 'Grayscale',
+        colors: ['#000000', '#1f1f1f', '#3f3f3f', '#5f5f5f', '#7f7f7f', '#9f9f9f', '#bfbfbf', '#dfdfdf', '#ffffff']
+    },
+    cga: {
+        label: 'CGA Inspired',
+        colors: ['#000000', '#550000', '#aa0000', '#ff5555', '#00aa00', '#55ff55', '#aa5500', '#ffff55', '#0000aa', '#5555ff', '#aa00aa', '#ff55ff', '#00aaaa', '#55ffff', '#aaaaaa', '#ffffff']
+    },
+    pastel: {
+        label: 'Pastel',
+        colors: ['#f8b195', '#f67280', '#c06c84', '#6c5b7b', '#355c7d', '#99b898', '#feceab', '#ff847c', '#e84a5f', '#2a363b']
+    }
+};
+
 let strokeCanvas = null;
 let strokeCtx = null;
 
@@ -60,6 +83,7 @@ class WASRTK {
         this.initializeCanvas();
         this.initializeFrames();
         this.initializeLayers();
+        this.initializePaletteUI();
         this.setupEventListeners();
         this.setupIPCListeners();
         this.updateUI();
@@ -265,6 +289,42 @@ class WASRTK {
         this.updateLayerList();
     }
 
+    initializePaletteUI() {
+        const paletteSelect = document.getElementById('paletteSelect');
+        if (!paletteSelect) {
+            return;
+        }
+
+        Object.entries(COLOR_PALETTES).forEach(([id, palette]) => {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = palette.label;
+            paletteSelect.append(option);
+        });
+
+        paletteSelect.value = selectedPalette;
+        this.renderPalettePresets(selectedPalette);
+    }
+
+    renderPalettePresets(paletteId) {
+        const palette = COLOR_PALETTES[paletteId] || COLOR_PALETTES['lospec-journey'];
+        const presetsContainer = document.getElementById('colorPresets');
+        if (!presetsContainer) {
+            return;
+        }
+
+        presetsContainer.innerHTML = '';
+        palette.colors.forEach((color) => {
+            const swatch = document.createElement('button');
+            swatch.type = 'button';
+            swatch.className = 'color-preset';
+            swatch.style.background = color;
+            swatch.dataset.color = color;
+            swatch.title = color;
+            presetsContainer.append(swatch);
+        });
+    }
+
     setupEventListeners() {
         // Tool selection
         document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -278,12 +338,20 @@ class WASRTK {
             this.setColor(e.target.value);
         });
 
-        // Color presets
-        document.querySelectorAll('.color-preset').forEach(preset => {
-            preset.addEventListener('click', (e) => {
-                this.setColor(e.target.dataset.color);
-                document.getElementById('colorPicker').value = e.target.dataset.color;
-            });
+        const paletteSelect = document.getElementById('paletteSelect');
+        paletteSelect.addEventListener('change', (e) => {
+            selectedPalette = e.target.value;
+            this.renderPalettePresets(selectedPalette);
+        });
+
+        const presetsContainer = document.getElementById('colorPresets');
+        presetsContainer.addEventListener('click', (e) => {
+            const preset = e.target.closest('.color-preset');
+            if (!preset) {
+                return;
+            }
+            this.setColor(preset.dataset.color);
+            document.getElementById('colorPicker').value = preset.dataset.color;
         });
 
         // Brush size
@@ -570,6 +638,68 @@ class WASRTK {
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && activeSelection) {
+                e.preventDefault();
+                this.copySelectionToClipboard();
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x' && activeSelection) {
+                e.preventDefault();
+                this.copySelectionToClipboard({ cut: true });
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+                e.preventDefault();
+                this.pasteSelectionFromClipboard();
+                return;
+            }
+
+            if ((e.key === 'Delete' || e.key === 'Backspace') && activeSelection) {
+                e.preventDefault();
+                this.copySelectionToClipboard({ cut: true });
+                return;
+            }
+
+            if (e.key === 'Escape' && activeSelection) {
+                e.preventDefault();
+                this.clearSelection();
+                return;
+            }
+
+            const nudgeMap = {
+                ArrowUp: { x: 0, y: -1 },
+                ArrowDown: { x: 0, y: 1 },
+                ArrowLeft: { x: -1, y: 0 },
+                ArrowRight: { x: 1, y: 0 }
+            };
+            if (activeSelection && nudgeMap[e.key]) {
+                e.preventDefault();
+                const step = e.shiftKey ? 10 : 1;
+                const nudge = nudgeMap[e.key];
+                this.applySelectionMove(activeSelection.x + (nudge.x * step), activeSelection.y + (nudge.y * step));
+                return;
+            }
+
+            const toolByShortcut = {
+                '1': 'pen',
+                '2': 'line',
+                '3': 'rectangle',
+                '4': 'circle',
+                '5': 'fill',
+                '6': 'eraser',
+                '7': 'selection'
+            };
+            if (toolByShortcut[e.key]) {
+                this.selectTool(toolByShortcut[e.key]);
+                return;
+            }
+
             // Prevent default behavior for certain keys
             if (e.key === ' ') {
                 e.preventDefault(); // Prevent page scroll
@@ -616,7 +746,10 @@ class WASRTK {
         document.querySelectorAll('.tool-btn').forEach(btn => {
             btn.classList.remove('active');
         });
-        document.querySelector(`[data-tool="${tool}"]`).classList.add('active');
+        const toolButton = document.querySelector(`[data-tool="${tool}"]`);
+        if (toolButton) {
+            toolButton.classList.add('active');
+        }
         
         // Show/hide fill tolerance slider
         const toleranceSection = document.getElementById('fillToleranceSection');
@@ -633,6 +766,14 @@ class WASRTK {
         // Hide brush preview if switching away from pen/eraser
         if (tool !== 'pen' && tool !== 'eraser') {
             this.hideBrushSizePreview();
+        }
+
+        if (tool !== 'selection') {
+            selectionInteraction = null;
+            if (activeSelection) {
+                activeSelection = null;
+                this.clearOverlay();
+            }
         }
         
         this.updateStatusBar();
@@ -746,6 +887,207 @@ class WASRTK {
         
     }
 
+    normalizeSelectionBounds(start, end, { keepSquare = false } = {}) {
+        let endX = end.x;
+        let endY = end.y;
+
+        if (keepSquare) {
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const side = Math.max(Math.abs(dx), Math.abs(dy));
+            endX = start.x + side * Math.sign(dx || 1);
+            endY = start.y + side * Math.sign(dy || 1);
+        }
+
+        const x = Math.min(start.x, endX);
+        const y = Math.min(start.y, endY);
+        const width = Math.abs(endX - start.x);
+        const height = Math.abs(endY - start.y);
+        return {
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(width),
+            height: Math.round(height)
+        };
+    }
+
+    drawSelectionOutline(bounds) {
+        this.clearOverlay();
+        overlayCtx.save();
+        overlayCtx.strokeStyle = '#1f9eff';
+        overlayCtx.setLineDash([5, 3]);
+        overlayCtx.lineWidth = 1;
+        overlayCtx.strokeRect(bounds.x + 0.5, bounds.y + 0.5, bounds.width, bounds.height);
+        overlayCtx.restore();
+    }
+
+    startSelectionInteraction(coords) {
+        if (activeSelection &&
+            coords.x >= activeSelection.x &&
+            coords.x <= activeSelection.x + activeSelection.width &&
+            coords.y >= activeSelection.y &&
+            coords.y <= activeSelection.y + activeSelection.height) {
+            selectionInteraction = {
+                mode: 'move',
+                start: coords,
+                originalX: activeSelection.x,
+                originalY: activeSelection.y
+            };
+            return;
+        }
+
+        activeSelection = null;
+        selectionInteraction = {
+            mode: 'select',
+            start: coords,
+            current: coords
+        };
+        this.drawSelectionOutline(this.normalizeSelectionBounds(coords, coords));
+    }
+
+    updateSelectionInteraction(coords, { keepSquare = false } = {}) {
+        if (!selectionInteraction) {
+            return;
+        }
+
+        if (selectionInteraction.mode === 'select') {
+            selectionInteraction.current = coords;
+            const bounds = this.normalizeSelectionBounds(selectionInteraction.start, coords, { keepSquare });
+            this.drawSelectionOutline(bounds);
+            return;
+        }
+
+        if (selectionInteraction.mode === 'move' && activeSelection) {
+            const dx = Math.round(coords.x - selectionInteraction.start.x);
+            const dy = Math.round(coords.y - selectionInteraction.start.y);
+            activeSelection.x = selectionInteraction.originalX + dx;
+            activeSelection.y = selectionInteraction.originalY + dy;
+            this.drawSelectionOutline(activeSelection);
+        }
+    }
+
+    finishSelectionInteraction() {
+        if (!selectionInteraction) {
+            return;
+        }
+
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            selectionInteraction = null;
+            return;
+        }
+        const ctx = layer.canvas.getContext('2d');
+
+        if (selectionInteraction.mode === 'select') {
+            const bounds = this.normalizeSelectionBounds(selectionInteraction.start, selectionInteraction.current);
+            if (bounds.width < 1 || bounds.height < 1) {
+                activeSelection = null;
+                this.clearOverlay();
+            } else {
+                const imageData = ctx.getImageData(bounds.x, bounds.y, bounds.width, bounds.height);
+                activeSelection = { ...bounds, imageData, originalX: bounds.x, originalY: bounds.y };
+                this.drawSelectionOutline(activeSelection);
+            }
+        } else if (selectionInteraction.mode === 'move' && activeSelection) {
+            this.applySelectionMove(activeSelection.x, activeSelection.y, { saveState: false });
+        }
+
+        selectionInteraction = null;
+    }
+
+    applySelectionMove(nextX, nextY, { saveState = true } = {}) {
+        if (!activeSelection) {
+            return;
+        }
+
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+        const ctx = layer.canvas.getContext('2d');
+        const targetX = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, Math.round(nextX)));
+        const targetY = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, Math.round(nextY)));
+
+        if (targetX === activeSelection.originalX && targetY === activeSelection.originalY) {
+            return;
+        }
+
+        if (saveState) {
+            this.saveState();
+        }
+
+        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
+        ctx.putImageData(activeSelection.imageData, targetX, targetY);
+        activeSelection.x = targetX;
+        activeSelection.y = targetY;
+        activeSelection.originalX = targetX;
+        activeSelection.originalY = targetY;
+        this.drawSelectionOutline(activeSelection);
+        this.renderCurrentFrame();
+    }
+
+    clearSelection() {
+        activeSelection = null;
+        selectionInteraction = null;
+        this.clearOverlay();
+    }
+
+    copySelectionToClipboard({ cut = false } = {}) {
+        if (!activeSelection) {
+            return;
+        }
+
+        selectionClipboard = {
+            width: activeSelection.width,
+            height: activeSelection.height,
+            imageData: new ImageData(new Uint8ClampedArray(activeSelection.imageData.data), activeSelection.width, activeSelection.height)
+        };
+
+        if (cut) {
+            this.saveState();
+            const frame = frames[currentFrame];
+            const layer = frame.layers[currentLayer];
+            if (!layer || layer.locked) {
+                return;
+            }
+            const ctx = layer.canvas.getContext('2d');
+            ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
+            this.renderCurrentFrame();
+            this.clearSelection();
+        }
+    }
+
+    pasteSelectionFromClipboard() {
+        if (!selectionClipboard) {
+            return;
+        }
+
+        this.saveState();
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+        const ctx = layer.canvas.getContext('2d');
+        const pasteX = activeSelection ? Math.min(mainCanvas.width - selectionClipboard.width, activeSelection.x + 1) : 0;
+        const pasteY = activeSelection ? Math.min(mainCanvas.height - selectionClipboard.height, activeSelection.y + 1) : 0;
+        ctx.putImageData(selectionClipboard.imageData, pasteX, pasteY);
+        const refreshedData = ctx.getImageData(pasteX, pasteY, selectionClipboard.width, selectionClipboard.height);
+        activeSelection = {
+            x: pasteX,
+            y: pasteY,
+            width: selectionClipboard.width,
+            height: selectionClipboard.height,
+            imageData: refreshedData,
+            originalX: pasteX,
+            originalY: pasteY
+        };
+        this.drawSelectionOutline(activeSelection);
+        this.renderCurrentFrame();
+    }
+
     // Drawing methods
     startDrawing(e) {
         const tool = this.getCurrentToolConfig();
@@ -769,7 +1111,10 @@ class WASRTK {
         tool?.onDraw?.(this, {
             currentCoords,
             lastMousePos,
-            startShape: this.startShape
+            startShape: this.startShape,
+            modifiers: {
+                keepSquare: e.shiftKey
+            }
         });
 
         lastMousePos = currentCoords;
