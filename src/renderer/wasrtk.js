@@ -666,19 +666,9 @@ class WASRTK {
                 return;
             }
 
-            if (e.key === 'Enter' && activeSelection?.pendingMove) {
-                e.preventDefault();
-                this.confirmSelectionMove();
-                return;
-            }
-
             if (e.key === 'Escape' && activeSelection) {
                 e.preventDefault();
-                if (activeSelection.pendingMove) {
-                    this.cancelPendingSelectionMove();
-                } else {
-                    this.clearSelection();
-                }
+                this.clearSelection();
                 return;
             }
 
@@ -940,11 +930,6 @@ class WASRTK {
             coords.x <= activeSelection.x + activeSelection.width &&
             coords.y >= activeSelection.y &&
             coords.y <= activeSelection.y + activeSelection.height) {
-            if (activeSelection.pendingMove) {
-                activeSelection.originalX = activeSelection.x;
-                activeSelection.originalY = activeSelection.y;
-                activeSelection.pendingMove = false;
-            }
             selectionInteraction = {
                 mode: 'move',
                 start: coords,
@@ -1010,13 +995,11 @@ class WASRTK {
                 this.clearOverlay();
             } else {
                 const imageData = ctx.getImageData(bounds.x, bounds.y, bounds.width, bounds.height);
-                activeSelection = { ...bounds, imageData, originalX: bounds.x, originalY: bounds.y, pendingMove: false };
+                activeSelection = { ...bounds, imageData, originalX: bounds.x, originalY: bounds.y };
                 this.drawSelectionOutline(activeSelection);
             }
         } else if (selectionInteraction.mode === 'move' && activeSelection) {
-            const moved = activeSelection.x !== activeSelection.originalX || activeSelection.y !== activeSelection.originalY;
-            activeSelection.pendingMove = moved;
-            this.drawSelectionOutline(activeSelection, { showPreview: moved });
+            this.applySelectionMove(activeSelection.x, activeSelection.y, { saveState: true });
         }
 
         selectionInteraction = null;
@@ -1050,26 +1033,8 @@ class WASRTK {
         activeSelection.y = targetY;
         activeSelection.originalX = targetX;
         activeSelection.originalY = targetY;
-        activeSelection.pendingMove = false;
         this.drawSelectionOutline(activeSelection);
         this.renderCurrentFrame();
-    }
-
-    confirmSelectionMove() {
-        if (!activeSelection || !activeSelection.pendingMove) {
-            return;
-        }
-        this.applySelectionMove(activeSelection.x, activeSelection.y, { saveState: true });
-    }
-
-    cancelPendingSelectionMove() {
-        if (!activeSelection || !activeSelection.pendingMove) {
-            return;
-        }
-        activeSelection.x = activeSelection.originalX;
-        activeSelection.y = activeSelection.originalY;
-        activeSelection.pendingMove = false;
-        this.drawSelectionOutline(activeSelection);
     }
 
     clearSelection() {
