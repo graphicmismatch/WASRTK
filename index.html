@@ -58,6 +58,9 @@
                         <button class="tool-btn" data-tool="eraser" title="Eraser Tool (6)">
                             <i class="fas fa-eraser"></i>
                         </button>
+                        <button class="tool-btn" data-tool="selection" title="Selection Tool (7)">
+                            <i class="fas fa-vector-square"></i>
+                        </button>
                     </div>
                     <div id="fillToleranceSection" class="panel-section" style="display: none;">
                         <label for="fillToleranceSlider">Tolerance:</label>
@@ -97,77 +100,11 @@
                             <input type="range" id="opacitySlider" min="0" max="100" value="100" class="slider">
                             <span id="opacityValue">100%</span>
                         </div>
-                        <div class="color-presets">
-                            <div class="color-preset" style="background: #3b1725" data-color="#3b1725"></div>
-                            <div class="color-preset" style="background: #73172d" data-color="#73172d"></div>
-                            <div class="color-preset" style="background: #b4202a" data-color="#b4202a"></div>
-                            <div class="color-preset" style="background: #df3e23" data-color="#df3e23"></div>
-                            <div class="color-preset" style="background: #e86a73" data-color="#e86a73"></div>
-                            <div class="color-preset" style="background: #fa6a0a" data-color="#fa6a0a"></div>
-                            <div class="color-preset" style="background: #f5a097" data-color="#f5a097"></div>
-                            <div class="color-preset" style="background: #fad6b8" data-color="#fad6b8"></div>
-                            <div class="color-preset" style="background: #fef3c0" data-color="#fef3c0"></div>
-                            <div class="color-preset" style="background: #ffd541" data-color="#ffd541"></div>
-                            <div class="color-preset" style="background: #fffc40" data-color="#fffc40"></div>
-                            <div class="color-preset" style="background: #fa6a0a" data-color="#fa6a0a"></div>
-                            <div class="color-preset" style="background: #f9a31b" data-color="#f9a31b"></div>
-                            <div class="color-preset" style="background: #df3e23" data-color="#df3e23"></div>
-                            <div class="color-preset" style="background: #b4202a" data-color="#b4202a"></div>
-                            <div class="color-preset" style="background: #73172d" data-color="#73172d"></div>
-                            <div class="color-preset" style="background: #3b1725" data-color="#3b1725"></div>
-                            <div class="color-preset" style="background: #d6f264" data-color="#d6f264"></div>
-                            <div class="color-preset" style="background: #9cdb43" data-color="#9cdb43"></div>
-                            <div class="color-preset" style="background: #59c135" data-color="#59c135"></div>
-                            <div class="color-preset" style="background: #14a02e" data-color="#14a02e"></div>
-                            <div class="color-preset" style="background: #1a7a3e" data-color="#1a7a3e"></div>
-                            <div class="color-preset" style="background: #24523b" data-color="#24523b"></div>
-                            <div class="color-preset" style="background: #23674e" data-color="#23674e"></div>
-                            <div class="color-preset" style="background: #328464" data-color="#328464"></div>
-                            <div class="color-preset" style="background: #5daf8d" data-color="#5daf8d"></div>
-                            <div class="color-preset" style="background: #92dcba" data-color="#92dcba"></div>
-                            <div class="color-preset" style="background: #cdf7e2" data-color="#cdf7e2"></div>
-                            <div class="color-preset" style="background: #a6fcdb" data-color="#a6fcdb"></div>
-                            <div class="color-preset" style="background: #143464" data-color="#143464"></div>
-                            <div class="color-preset" style="background: #285cc4" data-color="#285cc4"></div>
-                            <div class="color-preset" style="background: #249fde" data-color="#249fde"></div>
-                            <div class="color-preset" style="background: #20d6c7" data-color="#20d6c7"></div>
-                            <div class="color-preset" style="background: #b9bffb" data-color="#b9bffb"></div>
-                            <div class="color-preset" style="background: #849be4" data-color="#849be4"></div>
-                            <div class="color-preset" style="background: #588dbe" data-color="#588dbe"></div>
-                            <div class="color-preset" style="background: #477d85" data-color="#477d85"></div>
-                            <div class="color-preset" style="background: #e3e6ff" data-color="#e3e6ff"></div>
-                            <div class="color-preset" style="background: #dae0ea" data-color="#dae0ea"></div>
-                            <div class="color-preset" style="background: #b3b9d1" data-color="#b3b9d1"></div>
-                            <div class="color-preset" style="background: #8b93af" data-color="#8b93af"></div>
-                            <div class="color-preset" style="background: #6d758d" data-color="#6d758d"></div>
-                            <div class="color-preset" style="background: #4a5462" data-color="#4a5462"></div>
-                            <div class="color-preset" style="background: #333941" data-color="#333941"></div>
-                            <div class="color-preset" style="background: #bc4a9b" data-color="#bc4a9b"></div>
-                            <div class="color-preset" style="background: #793a80" data-color="#793a80"></div>
-                            <div class="color-preset" style="background: #403353" data-color="#403353"></div>
-                            <div class="color-preset" style="background: #242234" data-color="#242234"></div>
-                            <div class="color-preset" style="background: #e9b5a3" data-color="#e9b5a3"></div>
-                            <div class="color-preset" style="background: #ba756a" data-color="#ba756a"></div>
-                            <div class="color-preset" style="background: #8e5252" data-color="#8e5252"></div>
-                            <div class="color-preset" style="background: #5b3138" data-color="#5b3138"></div>
-                            <div class="color-preset" style="background: #422433" data-color="#422433"></div>
-                            <div class="color-preset" style="background: #221c1a" data-color="#221c1a"></div>
-                            <div class="color-preset" style="background: #322b28" data-color="#322b28"></div>
-                            <div class="color-preset" style="background: #71413b" data-color="#71413b"></div>
-                            <div class="color-preset" style="background: #bb7547" data-color="#bb7547"></div>
-                            <div class="color-preset" style="background: #dba463" data-color="#dba463"></div>
-                            <div class="color-preset" style="background: #f4d29c" data-color="#f4d29c"></div>
-                            <div class="color-preset" style="background: #e4d2aa" data-color="#e4d2aa"></div>
-                            <div class="color-preset" style="background: #c7b08b" data-color="#c7b08b"></div>
-                            <div class="color-preset" style="background: #a08662" data-color="#a08662"></div>
-                            <div class="color-preset" style="background: #796755" data-color="#796755"></div>
-                            <div class="color-preset" style="background: #5a4e44" data-color="#5a4e44"></div>
-                            <div class="color-preset" style="background: #423934" data-color="#423934"></div>
-                            <div class="color-preset" style="background: #060608" data-color="#060608"></div>
-                            <div class="color-preset" style="background: #141013" data-color="#141013"></div>
-                            <div class="color-preset" style="background: #122020" data-color="#122020"></div>
-                            <div class="color-preset" style="background: #ffffff" data-color="#ffffff"></div>
+                        <div class="palette-picker">
+                            <label for="paletteSelect">Palette:</label>
+                            <select id="paletteSelect" title="Choose a color palette preset."></select>
                         </div>
+                        <div class="color-presets" id="colorPresets"></div>
                     </div>
                 </div>
 
