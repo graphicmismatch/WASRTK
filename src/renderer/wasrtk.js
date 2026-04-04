@@ -1164,10 +1164,17 @@ class WASRTK {
     }
 
     floodFill(ctx, startX, startY, fillColor) {
+        const safeStartX = Math.max(0, Math.min(ctx.canvas.width - 1, Math.round(startX)));
+        const safeStartY = Math.max(0, Math.min(ctx.canvas.height - 1, Math.round(startY)));
+
+        if (!Number.isFinite(safeStartX) || !Number.isFinite(safeStartY)) {
+            return;
+        }
+
         const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
         const pixels = imageData.data;
         
-        const startPos = (startY * ctx.canvas.width + startX) * 4;
+        const startPos = (safeStartY * ctx.canvas.width + safeStartX) * 4;
         const startR = pixels[startPos];
         const startG = pixels[startPos + 1];
         const startB = pixels[startPos + 2];
@@ -1185,7 +1192,7 @@ class WASRTK {
         
         const pixelsToFill = [];
         
-        const stack = [[startX, startY]];
+        const stack = [[safeStartX, safeStartY]];
         const visited = new Set();
         
         while (stack.length) {
