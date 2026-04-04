@@ -2,6 +2,7 @@ const fs = require('fs');
 const { ipcMain, desktopCapturer } = require('electron');
 const { THUMBNAIL_SIZE } = require('./constants');
 const { loadThemeConfig, saveThemeConfig, resetThemeConfig, getThemeConfigPath } = require('./theme-config');
+const { loadPaletteConfig, savePaletteConfig, getPaletteConfigPath } = require('./palette-config');
 
 function mapScreenSource(source) {
   return {
@@ -42,7 +43,7 @@ function registerScreenCaptureHandlers() {
   });
 }
 
-function registerFileHandlers({ onThemeUpdated } = {}) {
+function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPaletteEditor } = {}) {
   ipcMain.handle('save-file', async (event, { filePath, data }) => {
     if (!filePath) {
       return { success: false, canceled: true };
@@ -90,6 +91,22 @@ function registerFileHandlers({ onThemeUpdated } = {}) {
     return result;
   });
   ipcMain.handle('get-theme-config-path', async () => getThemeConfigPath());
+
+  ipcMain.handle('load-palettes-config', async () => loadPaletteConfig());
+  ipcMain.handle('save-palettes-config', async (event, palettes) => {
+    const result = savePaletteConfig(palettes);
+    if (typeof onPalettesUpdated === 'function') {
+      onPalettesUpdated(result);
+    }
+    return result;
+  });
+  ipcMain.handle('get-palettes-config-path', async () => getPaletteConfigPath());
+  ipcMain.handle('open-palette-editor-window', async () => {
+    if (typeof onOpenPaletteEditor === 'function') {
+      onOpenPaletteEditor();
+    }
+    return { success: true };
+  });
 }
 
 module.exports = {

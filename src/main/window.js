@@ -4,6 +4,7 @@ const { BrowserWindow, dialog } = require('electron');
 function createWindowController({ getWindowOptions, loadFile }) {
   let mainWindow = null;
   let themeWindow = null;
+  let paletteWindow = null;
 
   function getMainWindow() {
     return mainWindow;
@@ -28,6 +29,16 @@ function createWindowController({ getWindowOptions, loadFile }) {
 
     if (themeWindow && !themeWindow.isDestroyed()) {
       themeWindow.webContents.send('theme-config-updated', payload);
+    }
+  }
+
+  function sendPaletteUpdate(payload) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('palette-config-updated', payload);
+    }
+
+    if (paletteWindow && !paletteWindow.isDestroyed()) {
+      paletteWindow.webContents.send('palette-config-updated', payload);
     }
   }
 
@@ -117,13 +128,50 @@ function createWindowController({ getWindowOptions, loadFile }) {
     return themeWindow;
   }
 
+  function openPaletteEditorWindow() {
+    if (paletteWindow && !paletteWindow.isDestroyed()) {
+      paletteWindow.focus();
+      return paletteWindow;
+    }
+
+    paletteWindow = new BrowserWindow({
+      ...getWindowOptions(),
+      width: 820,
+      height: 760,
+      minWidth: 640,
+      minHeight: 560,
+      parent: mainWindow || undefined,
+      title: 'WASRTK Palette Editor',
+      show: false
+    });
+
+    paletteWindow.removeMenu();
+    paletteWindow.loadFile(path.resolve(__dirname, '../../palette-window.html'));
+
+    paletteWindow.once('ready-to-show', () => {
+      paletteWindow.show();
+    });
+
+    paletteWindow.on('closed', () => {
+      paletteWindow = null;
+    });
+
+    if (process.argv.includes('--dev')) {
+      paletteWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+
+    return paletteWindow;
+  }
+
   return {
     createWindow,
     getMainWindow,
     sendToRenderer,
     sendThemeUpdate,
+    sendPaletteUpdate,
     menuAction,
     openThemeSettingsWindow,
+    openPaletteEditorWindow,
     showOpenDialogAndSend,
     showSaveDialogAndSend
   };

@@ -218,33 +218,6 @@ body {
     gap: 6px;
 }
 
-.palette-editor {
-    border: 1px solid var(--bg-med);
-    border-radius: 6px;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.palette-editor input[type="text"] {
-    background-color: var(--bg-dark);
-    color: var(--text-light);
-    border: 1px solid var(--bg-med);
-    border-radius: 4px;
-    padding: 6px 8px;
-}
-
-.palette-editor-add-row {
-    display: grid;
-    grid-template-columns: 48px repeat(3, 1fr);
-    gap: 6px;
-}
-
-.palette-editor-add-row input[type="color"] {
-    height: 30px;
-}
-
 .palette-editor-swatches {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
