@@ -198,6 +198,20 @@ body {
     gap: 2px;
 }
 
+.palette-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.palette-picker select {
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    border: 1px solid var(--bg-med);
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
 .color-preset {
     width: 18px;
     height: 18px;
@@ -205,6 +219,8 @@ body {
     border-radius: 2px;
     cursor: pointer;
     transition: border-color 0.2s ease;
+    appearance: none;
+    padding: 0;
 }
 
 .color-preset:hover {
