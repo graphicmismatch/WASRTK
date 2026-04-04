@@ -124,7 +124,7 @@ async function importPaletteFromImageFile(file) {
   });
 
   const tempCanvas = document.createElement('canvas');
-  const maxSize = 128;
+  const maxSize = 200;
   const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
   tempCanvas.width = Math.max(1, Math.round(img.width * scale));
   tempCanvas.height = Math.max(1, Math.round(img.height * scale));
@@ -132,21 +132,27 @@ async function importPaletteFromImageFile(file) {
   tempCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
 
   const { data } = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-  const colors = [];
+  const colorFrequency = new Map();
   for (let index = 0; index < data.length; index += 4) {
     if (data[index + 3] < 10) {
       continue;
     }
-    const hex = `#${[data[index], data[index + 1], data[index + 2]].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
-    colors.push(hex);
-    if (colors.length >= 512) {
-      break;
-    }
+
+    // Reduce noise by quantizing to 5-bit precision per channel.
+    const red = Math.round(data[index] / 8) * 8;
+    const green = Math.round(data[index + 1] / 8) * 8;
+    const blue = Math.round(data[index + 2] / 8) * 8;
+    const hex = `#${[red, green, blue].map((channel) => Math.max(0, Math.min(255, channel)).toString(16).padStart(2, '0')).join('')}`;
+    colorFrequency.set(hex, (colorFrequency.get(hex) || 0) + 1);
   }
   URL.revokeObjectURL(imageUrl);
 
-  const uniqueColors = dedupeColors(colors).slice(0, 64);
-  if (!uniqueColors.length) {
+  const rankedColors = Array.from(colorFrequency.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([color]) => color);
+
+  const uniqueColors = dedupeColors(rankedColors).slice(0, 64);
+  if (!rankedColors.length || !uniqueColors.length) {
     throw new Error('No visible colors could be extracted from this image.');
   }
   const extension = path.extname(file.name || '');
