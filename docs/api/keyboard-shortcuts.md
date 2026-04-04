@@ -15,6 +15,23 @@ This page documents shortcuts that are actually wired in the current repository,
 
 - `Ctrl/Cmd+Z`: Undo
 - `Ctrl/Cmd+Y`: Redo
+- `Ctrl/Cmd+C`: Copy active selection
+- `Ctrl/Cmd+X`: Cut active selection
+- `Ctrl/Cmd+V`: Paste selection clipboard
+- `Delete` / `Backspace`: Clear active selection contents
+- Arrow keys: Nudge active selection by 1px
+- `Shift+Arrow`: Nudge active selection by 10px
+
+## Tools
+
+- `1`: Pen
+- `2`: Line
+- `3`: Rectangle
+- `4`: Circle
+- `5`: Fill
+- `6`: Eraser
+- `7`: Selection
+- `Escape`: Clear active selection overlay
 
 ## View
 
@@ -26,7 +43,7 @@ Standard Electron view roles are also present for reload, force reload, DevTools
 
 - `F`: Add frame
 - `D`: Duplicate frame
-- `Delete`: Delete frame
+- `Delete`: Delete frame (when no active selection)
 - `Space`: Toggle playback
 - `Escape`: Menu accelerator for the Stop Animation action
 
@@ -48,4 +65,4 @@ Note: in the current renderer implementation, both `Play Animation` and `Stop An
 
 ## Not currently wired
 
-- Number-key tool switching is shown in some UI titles but is not implemented in renderer key handling.
+- Advanced selection transforms (scale/rotate) do not have keyboard shortcuts yet.
