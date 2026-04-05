@@ -18,7 +18,8 @@ function buildToolsSubmenu(menuAction) {
     ['Circle Tool', 'circle'],
     ['Fill Tool', 'fill'],
     ['Eraser Tool', 'eraser'],
-    ['Selection Tool', 'selection']
+    ['Selection Tool', 'selection'],
+    ['Eyedropper Tool', 'eyedropper']
   ];
 
   return tools.map(([label, tool]) => ({
@@ -27,7 +28,7 @@ function buildToolsSubmenu(menuAction) {
   }));
 }
 
-function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindow, openThemeSettingsWindow }) {
+function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindow, openThemeSettingsWindow, openPaletteEditorWindow }) {
   const template = [
     {
       label: 'File',
@@ -76,6 +77,7 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
         { role: 'zoomOut', label: 'Zoom Out' },
         { type: 'separator' },
         { label: 'Theme Settings', accelerator: 'CmdOrCtrl+Alt+T', click: openThemeSettingsWindow },
+        { label: 'Palette Editor', accelerator: 'CmdOrCtrl+Alt+P', click: openPaletteEditorWindow },
         { type: 'separator' },
         { role: 'togglefullscreen', label: 'Toggle Full Screen' }
       ]

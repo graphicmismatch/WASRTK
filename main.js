@@ -14,14 +14,19 @@ app.whenReady().then(() => {
   windowController.createWindow();
 
   registerScreenCaptureHandlers();
-  registerFileHandlers({ onThemeUpdated: windowController.sendThemeUpdate });
+  registerFileHandlers({
+    onThemeUpdated: windowController.sendThemeUpdate,
+    onPalettesUpdated: windowController.sendPaletteUpdate,
+    onOpenPaletteEditor: windowController.openPaletteEditorWindow
+  });
 
   const menuTemplate = createMenuTemplate({
     menuAction: windowController.menuAction,
     openAndSend: windowController.showOpenDialogAndSend,
     saveAndSend: windowController.showSaveDialogAndSend,
     getMainWindow: windowController.getMainWindow,
-    openThemeSettingsWindow: windowController.openThemeSettingsWindow
+    openThemeSettingsWindow: windowController.openThemeSettingsWindow,
+    openPaletteEditorWindow: windowController.openPaletteEditorWindow
   });
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
