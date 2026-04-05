@@ -232,6 +232,17 @@ body {
     cursor: pointer;
 }
 
+.palette-editor-input {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--bg-med);
+    border-radius: 6px;
+    background: var(--bg-dark);
+    color: var(--text-light);
+    padding: 8px;
+    font-size: 14px;
+}
+
 .color-preset {
     width: 18px;
     height: 18px;

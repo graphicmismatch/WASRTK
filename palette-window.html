@@ -21,14 +21,27 @@
 
         <section class="theme-section">
             <label for="paletteNameInput">Palette Name</label>
-            <input id="paletteNameInput" type="text" class="theme-config-editor" style="min-height: 40px;" placeholder="My Palette">
+            <input id="paletteNameInput" type="text" class="palette-editor-input" placeholder="My Palette">
             <div class="theme-actions">
                 <input id="paletteEditorColorInput" type="color" value="#000000">
                 <button id="addPaletteColorBtn" class="btn btn-small" type="button">Add Color</button>
                 <button id="clearPaletteEditorBtn" class="btn btn-small" type="button">Clear</button>
                 <button id="savePaletteBtn" class="btn btn-primary btn-small" type="button">Save Palette</button>
             </div>
+            <p class="theme-help" id="draftPaletteStatus">Draft palette is empty.</p>
             <div id="paletteEditorSwatches" class="palette-editor-swatches"></div>
+        </section>
+
+        <section class="theme-section">
+            <h2>Palette Management</h2>
+            <label for="savedPalettesSelect">Saved Palettes</label>
+            <select id="savedPalettesSelect" class="palette-editor-input"></select>
+            <div class="theme-actions">
+                <button id="loadSavedPaletteBtn" class="btn btn-small" type="button">Load Into Draft</button>
+                <button id="deleteSavedPaletteBtn" class="btn btn-small" type="button">Delete Palette</button>
+            </div>
+            <p class="theme-help">Preview of selected saved palette:</p>
+            <div id="savedPalettePreviewSwatches" class="palette-editor-swatches"></div>
             <p class="theme-config-path"><strong>Config file:</strong> <span id="paletteConfigPath"></span></p>
             <input id="paletteFileInput" type="file" accept=".hex,.gpl,.pal,.txt,.csv,.json,.png,.jpg,.jpeg,.gif,.bmp,.webp" hidden>
             <input id="paletteImageInput" type="file" accept="image/*" hidden>
