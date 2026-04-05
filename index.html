@@ -61,6 +61,9 @@
                         <button class="tool-btn" data-tool="selection" title="Selection Tool (7)">
                             <i class="fas fa-vector-square"></i>
                         </button>
+                        <button class="tool-btn" data-tool="eyedropper" title="Eyedropper Tool (8)">
+                            <i class="fas fa-eye-dropper"></i>
+                        </button>
                     </div>
                     <div id="fillToleranceSection" class="panel-section" style="display: none;">
                         <label for="fillToleranceSlider">Tolerance:</label>
@@ -172,6 +175,10 @@
                         <canvas id="overlayCanvas" width="256" height="256"></canvas>
                     </div>
                     <div id="canvasBrushPreview" class="brush-size-preview"></div>
+                    <div id="eyedropperZoomLens" class="eyedropper-zoom-lens" hidden>
+                        <canvas id="eyedropperZoomCanvas" width="120" height="120"></canvas>
+                        <div class="eyedropper-zoom-label" id="eyedropperZoomLabel">#000000</div>
+                    </div>
                 </div>
             </div>
 

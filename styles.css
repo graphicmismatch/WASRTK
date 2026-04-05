@@ -510,6 +510,35 @@ body {
     pointer-events: none;
 }
 
+.eyedropper-zoom-lens {
+    position: absolute;
+    width: 126px;
+    background: var(--bg-light);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 3px;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    z-index: 20;
+}
+
+#eyedropperZoomCanvas {
+    width: 120px;
+    height: 120px;
+    display: block;
+    image-rendering: pixelated;
+    border: 1px solid var(--bg-med);
+    background: var(--bg-dark);
+}
+
+.eyedropper-zoom-label {
+    font-size: 11px;
+    color: var(--text-light);
+    text-align: center;
+    margin-top: 3px;
+    font-family: monospace;
+}
+
 /* Timeline */
 .timeline-controls {
     display: flex;

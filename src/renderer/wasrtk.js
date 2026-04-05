@@ -505,6 +505,8 @@ class WASRTK {
                 }
                 return;
             }
+
+            this.updateEyedropperZoomPreview(e);
             
             this.draw(e);
         };
@@ -565,11 +567,13 @@ class WASRTK {
             const pixelCoords = this.screenToCanvas(e.clientX, e.clientY);
             document.getElementById('mousePosition').textContent = `${pixelCoords.x}, ${pixelCoords.y}`;
             this.updateBrushSizePreview(e.clientX, e.clientY);
+            this.updateEyedropperZoomPreview(e);
         });
 
         // Hide brush preview when mouse leaves canvas
         mainCanvas.addEventListener('mouseleave', () => {
             this.hideBrushSizePreview();
+            this.hideEyedropperZoomPreview();
         });
 
         // Timeline events
@@ -786,7 +790,8 @@ class WASRTK {
                 '4': 'circle',
                 '5': 'fill',
                 '6': 'eraser',
-                '7': 'selection'
+                '7': 'selection',
+                '8': 'eyedropper'
             };
             if (toolByShortcut[e.key]) {
                 this.selectTool(toolByShortcut[e.key]);
@@ -864,6 +869,10 @@ class WASRTK {
             this.hideBrushSizePreview();
         }
 
+        if (tool !== 'eyedropper') {
+            this.hideEyedropperZoomPreview();
+        }
+
         if (tool !== 'selection') {
             selectionInteraction = null;
             if (activeSelection) {
@@ -885,6 +894,75 @@ class WASRTK {
         if (brushPreview.style.display !== 'none' && currentTool === 'pen') {
             brushPreview.style.backgroundColor = currentColor;
             brushPreview.style.borderColor = currentColor;
+        }
+    }
+
+    pickColorAt(x, y) {
+        const sampleX = Math.max(0, Math.min(mainCanvas.width - 1, Math.round(x)));
+        const sampleY = Math.max(0, Math.min(mainCanvas.height - 1, Math.round(y)));
+        const pixel = mainCtx.getImageData(sampleX, sampleY, 1, 1).data;
+        const pickedColor = `#${[pixel[0], pixel[1], pixel[2]].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+        this.setColor(pickedColor);
+        document.getElementById('colorPicker').value = pickedColor;
+        return pickedColor;
+    }
+
+    updateEyedropperZoomPreview(e, providedColor = null) {
+        if (currentTool !== 'eyedropper') {
+            this.hideEyedropperZoomPreview();
+            return;
+        }
+
+        const lens = document.getElementById('eyedropperZoomLens');
+        const zoomCanvas = document.getElementById('eyedropperZoomCanvas');
+        const zoomLabel = document.getElementById('eyedropperZoomLabel');
+        if (!lens || !zoomCanvas || !zoomLabel) {
+            return;
+        }
+
+        const coords = this.screenToCanvas(e.clientX, e.clientY);
+        const zoomCtx = zoomCanvas.getContext('2d');
+        const sampleSize = 11;
+        const halfSize = Math.floor(sampleSize / 2);
+        const sampleX = Math.max(0, Math.min(mainCanvas.width - sampleSize, Math.round(coords.x) - halfSize));
+        const sampleY = Math.max(0, Math.min(mainCanvas.height - sampleSize, Math.round(coords.y) - halfSize));
+
+        zoomCtx.save();
+        zoomCtx.imageSmoothingEnabled = false;
+        zoomCtx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+        zoomCtx.drawImage(mainCanvas, sampleX, sampleY, sampleSize, sampleSize, 0, 0, zoomCanvas.width, zoomCanvas.height);
+
+        const center = zoomCanvas.width / 2;
+        zoomCtx.strokeStyle = '#ff3366';
+        zoomCtx.lineWidth = 1;
+        zoomCtx.beginPath();
+        zoomCtx.moveTo(center, 0);
+        zoomCtx.lineTo(center, zoomCanvas.height);
+        zoomCtx.moveTo(0, center);
+        zoomCtx.lineTo(zoomCanvas.width, center);
+        zoomCtx.stroke();
+        zoomCtx.restore();
+
+        const wrapperRect = document.querySelector('.canvas-wrapper').getBoundingClientRect();
+        const lensOffsetX = 20;
+        const lensOffsetY = 20;
+        let left = e.clientX - wrapperRect.left + lensOffsetX;
+        let top = e.clientY - wrapperRect.top + lensOffsetY;
+        const maxLeft = wrapperRect.width - lens.offsetWidth - 4;
+        const maxTop = wrapperRect.height - lens.offsetHeight - 4;
+        left = Math.max(4, Math.min(maxLeft, left));
+        top = Math.max(4, Math.min(maxTop, top));
+
+        lens.style.left = `${left}px`;
+        lens.style.top = `${top}px`;
+        lens.hidden = false;
+        zoomLabel.textContent = providedColor || currentColor;
+    }
+
+    hideEyedropperZoomPreview() {
+        const lens = document.getElementById('eyedropperZoomLens');
+        if (lens) {
+            lens.hidden = true;
         }
     }
 
