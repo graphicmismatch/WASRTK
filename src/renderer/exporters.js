@@ -9,15 +9,27 @@ const MIME_TYPES = {
 };
 
 function getMimeType(fileExtension) {
-  return MIME_TYPES[fileExtension] || 'application/octet-stream';
+  return MIME_TYPES[String(fileExtension || '').toLowerCase()] || 'application/octet-stream';
 }
 
 function drawVisibleLayersToContext(targetCtx, frame) {
-  frame.layers.forEach((layer) => {
+  const layers = Array.isArray(frame?.layers) ? frame.layers : [];
+
+  layers.forEach((layer) => {
     if (layer.visible) {
       targetCtx.drawImage(layer.canvas, 0, 0);
     }
   });
+}
+
+function getFrameDelayMs(fps) {
+  const parsedFps = Number(fps);
+
+  if (!Number.isFinite(parsedFps) || parsedFps <= 0) {
+    return 100;
+  }
+
+  return Math.max(1, Math.round(1000 / parsedFps));
 }
 
 async function saveAsPngSequence({ filePath, frames, width, height, invoke, createCanvas }) {
@@ -47,6 +59,8 @@ async function saveAsPngSequence({ filePath, frames, width, height, invoke, crea
 
 function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas, GIF }) {
   return new Promise((resolve, reject) => {
+    const frameDelayMs = getFrameDelayMs(fps);
+
     const gif = new GIF({
       workers: 2,
       quality: 10,
@@ -65,7 +79,7 @@ function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas,
 
       drawVisibleLayersToContext(tempCtx, frame);
 
-      gif.addFrame(tempCanvas, { delay: Math.round(1000 / fps) });
+      gif.addFrame(tempCanvas, { delay: frameDelayMs });
     });
 
     gif.on('finished', async (blob) => {
