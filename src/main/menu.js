@@ -18,7 +18,8 @@ function buildToolsSubmenu(menuAction) {
     ['Circle Tool', 'circle'],
     ['Fill Tool', 'fill'],
     ['Eraser Tool', 'eraser'],
-    ['Selection Tool', 'selection']
+    ['Selection Tool', 'selection'],
+    ['Eyedropper Tool', 'eyedropper']
   ];
 
   return tools.map(([label, tool]) => ({

@@ -13,6 +13,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - Export to PNG sequences or animated GIF
 - Multiple palette presets with quick swatch switching
 - Palette creation/import workflows via dedicated Palette Editor window (image extraction + Lospec formats excluding Paint.NET/Photoshop)
+- Eyedropper tool with zoomed color-pick preview lens
 - Theme customization through a separate theme settings window
 
 ## Project task list
@@ -30,6 +31,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Add palette creation/import support for editor, image extraction, and Lospec-compatible files (excluding Paint.NET/Photoshop formats).
 - [x] Improve palette image import extraction quality so representative colors are detected reliably.
 - [x] Add palette management workflow with saved-palette preview and draft preview before committing to the palette list.
+- [x] Add an eyedropper tool with zoomed pick-area preview for easier color selection.
 
 ## Getting started
 
