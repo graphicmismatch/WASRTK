@@ -32,6 +32,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Improve palette image import extraction quality so representative colors are detected reliably.
 - [x] Add palette management workflow with saved-palette preview and draft preview before committing to the palette list.
 - [x] Add an eyedropper tool with zoomed pick-area preview for easier color selection.
+- [x] Keep eyedropper preview hex label live-updating while hovering before click.
 
 ## Getting started
 
