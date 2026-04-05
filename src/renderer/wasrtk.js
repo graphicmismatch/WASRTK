@@ -70,9 +70,40 @@ const COLOR_PALETTES = {
         colors: ['#f8b195', '#f67280', '#c06c84', '#6c5b7b', '#355c7d', '#99b898', '#feceab', '#ff847c', '#e84a5f', '#2a363b']
     }
 };
+const BUILTIN_PALETTE_IDS = new Set(Object.keys(COLOR_PALETTES));
 
 let strokeCanvas = null;
 let strokeCtx = null;
+
+function normalizeHexColor(value) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const cleaned = value.trim().replace(/^#/, '').toLowerCase();
+    if (/^[0-9a-f]{3}$/.test(cleaned)) {
+        return `#${cleaned.split('').map((c) => c + c).join('')}`;
+    }
+    if (/^[0-9a-f]{6}$/.test(cleaned)) {
+        return `#${cleaned}`;
+    }
+
+    return null;
+}
+
+function dedupeColors(colors) {
+    const uniqueColors = [];
+    const seen = new Set();
+    colors.forEach((color) => {
+        const normalized = normalizeHexColor(color);
+        if (!normalized || seen.has(normalized)) {
+            return;
+        }
+        seen.add(normalized);
+        uniqueColors.push(normalized);
+    });
+    return uniqueColors;
+}
 
 // Initialize the application
 class WASRTK {
@@ -84,6 +115,7 @@ class WASRTK {
         this.initializeFrames();
         this.initializeLayers();
         this.initializePaletteUI();
+        this.loadCustomPalettesFromConfig();
         this.setupEventListeners();
         this.setupIPCListeners();
         this.updateUI();
@@ -295,14 +327,61 @@ class WASRTK {
             return;
         }
 
+        this.refreshPaletteSelect();
+
+        if (!COLOR_PALETTES[selectedPalette]) {
+            selectedPalette = 'lospec-journey';
+        }
+        paletteSelect.value = selectedPalette;
+        this.renderPalettePresets(selectedPalette);
+    }
+
+    refreshPaletteSelect() {
+        const paletteSelect = document.getElementById('paletteSelect');
+        if (!paletteSelect) {
+            return;
+        }
+
+        paletteSelect.innerHTML = '';
         Object.entries(COLOR_PALETTES).forEach(([id, palette]) => {
             const option = document.createElement('option');
             option.value = id;
             option.textContent = palette.label;
             paletteSelect.append(option);
         });
+    }
 
-        paletteSelect.value = selectedPalette;
+    async loadCustomPalettesFromConfig() {
+        const payload = await ipcRenderer.invoke('load-palettes-config');
+        this.mergeCustomPalettes(payload.palettes || {});
+    }
+
+    mergeCustomPalettes(customPalettes) {
+        Object.entries(COLOR_PALETTES).forEach(([id]) => {
+            if (!BUILTIN_PALETTE_IDS.has(id)) {
+                delete COLOR_PALETTES[id];
+            }
+        });
+
+        Object.entries(customPalettes).forEach(([id, palette]) => {
+            if (!palette || !palette.label || !Array.isArray(palette.colors)) {
+                return;
+            }
+            const colors = dedupeColors(palette.colors);
+            if (!colors.length) {
+                return;
+            }
+            COLOR_PALETTES[id] = {
+                label: String(palette.label),
+                colors
+            };
+        });
+
+        this.refreshPaletteSelect();
+        if (!COLOR_PALETTES[selectedPalette]) {
+            selectedPalette = 'lospec-journey';
+        }
+        document.getElementById('paletteSelect').value = selectedPalette;
         this.renderPalettePresets(selectedPalette);
     }
 
@@ -352,6 +431,10 @@ class WASRTK {
             }
             this.setColor(preset.dataset.color);
             document.getElementById('colorPicker').value = preset.dataset.color;
+        });
+
+        document.getElementById('openPaletteEditorBtn').addEventListener('click', async () => {
+            await ipcRenderer.invoke('open-palette-editor-window');
         });
 
         // Brush size
@@ -422,6 +505,8 @@ class WASRTK {
                 }
                 return;
             }
+
+            this.updateEyedropperZoomPreview(e);
             
             this.draw(e);
         };
@@ -482,11 +567,13 @@ class WASRTK {
             const pixelCoords = this.screenToCanvas(e.clientX, e.clientY);
             document.getElementById('mousePosition').textContent = `${pixelCoords.x}, ${pixelCoords.y}`;
             this.updateBrushSizePreview(e.clientX, e.clientY);
+            this.updateEyedropperZoomPreview(e);
         });
 
         // Hide brush preview when mouse leaves canvas
         mainCanvas.addEventListener('mouseleave', () => {
             this.hideBrushSizePreview();
+            this.hideEyedropperZoomPreview();
         });
 
         // Timeline events
@@ -703,7 +790,8 @@ class WASRTK {
                 '4': 'circle',
                 '5': 'fill',
                 '6': 'eraser',
-                '7': 'selection'
+                '7': 'selection',
+                '8': 'eyedropper'
             };
             if (toolByShortcut[e.key]) {
                 this.selectTool(toolByShortcut[e.key]);
@@ -748,6 +836,9 @@ class WASRTK {
             this.renderCurrentFrame();
             this.updateStatusBar();
         });
+        ipcRenderer.on('palette-config-updated', (event, payload) => {
+            this.mergeCustomPalettes(payload.palettes || {});
+        });
     }
 
     // Tool methods
@@ -778,6 +869,10 @@ class WASRTK {
             this.hideBrushSizePreview();
         }
 
+        if (tool !== 'eyedropper') {
+            this.hideEyedropperZoomPreview();
+        }
+
         if (tool !== 'selection') {
             selectionInteraction = null;
             if (activeSelection) {
@@ -799,6 +894,80 @@ class WASRTK {
         if (brushPreview.style.display !== 'none' && currentTool === 'pen') {
             brushPreview.style.backgroundColor = currentColor;
             brushPreview.style.borderColor = currentColor;
+        }
+    }
+
+    getColorAtCanvasPosition(x, y) {
+        const sampleX = Math.max(0, Math.min(mainCanvas.width - 1, Math.round(x)));
+        const sampleY = Math.max(0, Math.min(mainCanvas.height - 1, Math.round(y)));
+        const pixel = mainCtx.getImageData(sampleX, sampleY, 1, 1).data;
+        return `#${[pixel[0], pixel[1], pixel[2]].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+    }
+
+    pickColorAt(x, y) {
+        const pickedColor = this.getColorAtCanvasPosition(x, y);
+        this.setColor(pickedColor);
+        document.getElementById('colorPicker').value = pickedColor;
+        return pickedColor;
+    }
+
+    updateEyedropperZoomPreview(e) {
+        if (currentTool !== 'eyedropper') {
+            this.hideEyedropperZoomPreview();
+            return;
+        }
+
+        const lens = document.getElementById('eyedropperZoomLens');
+        const zoomCanvas = document.getElementById('eyedropperZoomCanvas');
+        const zoomLabel = document.getElementById('eyedropperZoomLabel');
+        if (!lens || !zoomCanvas || !zoomLabel) {
+            return;
+        }
+
+        const coords = this.screenToCanvas(e.clientX, e.clientY);
+        const liveHoverColor = this.getColorAtCanvasPosition(coords.x, coords.y);
+        const zoomCtx = zoomCanvas.getContext('2d');
+        const sampleSize = 11;
+        const halfSize = Math.floor(sampleSize / 2);
+        const sampleX = Math.max(0, Math.min(mainCanvas.width - sampleSize, Math.round(coords.x) - halfSize));
+        const sampleY = Math.max(0, Math.min(mainCanvas.height - sampleSize, Math.round(coords.y) - halfSize));
+
+        zoomCtx.save();
+        zoomCtx.imageSmoothingEnabled = false;
+        zoomCtx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+        zoomCtx.drawImage(mainCanvas, sampleX, sampleY, sampleSize, sampleSize, 0, 0, zoomCanvas.width, zoomCanvas.height);
+
+        const center = zoomCanvas.width / 2;
+        zoomCtx.strokeStyle = '#ff3366';
+        zoomCtx.lineWidth = 1;
+        zoomCtx.beginPath();
+        zoomCtx.moveTo(center, 0);
+        zoomCtx.lineTo(center, zoomCanvas.height);
+        zoomCtx.moveTo(0, center);
+        zoomCtx.lineTo(zoomCanvas.width, center);
+        zoomCtx.stroke();
+        zoomCtx.restore();
+
+        const wrapperRect = document.querySelector('.canvas-wrapper').getBoundingClientRect();
+        const lensOffsetX = 20;
+        const lensOffsetY = 20;
+        let left = e.clientX - wrapperRect.left + lensOffsetX;
+        let top = e.clientY - wrapperRect.top + lensOffsetY;
+        const maxLeft = wrapperRect.width - lens.offsetWidth - 4;
+        const maxTop = wrapperRect.height - lens.offsetHeight - 4;
+        left = Math.max(4, Math.min(maxLeft, left));
+        top = Math.max(4, Math.min(maxTop, top));
+
+        lens.style.left = `${left}px`;
+        lens.style.top = `${top}px`;
+        lens.hidden = false;
+        zoomLabel.textContent = liveHoverColor;
+    }
+
+    hideEyedropperZoomPreview() {
+        const lens = document.getElementById('eyedropperZoomLens');
+        if (lens) {
+            lens.hidden = true;
         }
     }
 
