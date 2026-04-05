@@ -37,6 +37,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Improve config/file IPC resilience (auto-recover palette config file + validate read/write file paths).
 - [x] Add pen tool straight-line assist (Shift from last point + Ctrl/Cmd snap to 45° increments like Aseprite).
 - [x] Cache per-layer 2D rendering contexts to reduce repeated context lookups in hot drawing/render paths.
+- [x] Constrain rectangle and ellipse tools with Shift so previews/commits become perfect squares and circles.
 
 ## Getting started
 

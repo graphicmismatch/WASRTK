@@ -1619,12 +1619,32 @@ class WASRTK {
         }
     }
 
-    drawShapePreview(start, end, tool) {
+    getConstrainedShapeEndPoint(start, end, { keepSquare = false, tool } = {}) {
+        if (!keepSquare || (tool !== 'rectangle' && tool !== 'circle')) {
+            return end;
+        }
+
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const size = Math.max(Math.abs(dx), Math.abs(dy));
+        const fallbackSignX = dy === 0 ? 1 : Math.sign(dy);
+        const fallbackSignY = dx === 0 ? 1 : Math.sign(dx);
+        const signX = dx === 0 ? fallbackSignX : Math.sign(dx);
+        const signY = dy === 0 ? fallbackSignY : Math.sign(dy);
+
+        return {
+            x: start.x + (size * signX),
+            y: start.y + (size * signY)
+        };
+    }
+
+    drawShapePreview(start, end, tool, { keepSquare = false } = {}) {
         overlayCtx.save();
         this.applyImageSmoothing(overlayCtx);
         
         const startCoords = antialiasingEnabled ? start : this.roundToPixel(start.x, start.y);
-        const endCoords = antialiasingEnabled ? end : this.roundToPixel(end.x, end.y);
+        const constrainedEnd = this.getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
+        const endCoords = antialiasingEnabled ? constrainedEnd : this.roundToPixel(constrainedEnd.x, constrainedEnd.y);
         
         overlayCtx.strokeStyle = currentColor;
         overlayCtx.lineWidth = brushSize;
@@ -1663,7 +1683,7 @@ class WASRTK {
         overlayCtx.restore();
     }
 
-    commitShape(start, end, tool) {
+    commitShape(start, end, tool, { keepSquare = false } = {}) {
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
         if (!layer || layer.locked) return;
@@ -1675,7 +1695,7 @@ class WASRTK {
             ctx.imageSmoothingQuality = 'high';
             
             const startCoords = start;
-            const endCoords = end;
+            const endCoords = this.getConstrainedShapeEndPoint(start, end, { keepSquare, tool });
             ctx.strokeStyle = currentColor;
             ctx.lineWidth = brushSize;
             ctx.globalAlpha = currentOpacity;
@@ -1712,7 +1732,8 @@ class WASRTK {
             ctx.imageSmoothingEnabled = false;
             
             const startCoords = this.roundToPixel(start.x, start.y);
-            const endCoords = this.roundToPixel(end.x, end.y);
+            const constrainedEnd = this.getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
+            const endCoords = this.roundToPixel(constrainedEnd.x, constrainedEnd.y);
             
             ctx.fillStyle = currentColor;
             ctx.strokeStyle = currentColor;
