@@ -4,6 +4,7 @@ const { initializeThemeSync } = require('./theme');
 
 let paletteEditorColors = [];
 let existingPalettes = {};
+let currentEditingPaletteId = null;
 
 function normalizeHexColor(value) {
   if (typeof value !== 'string') {
@@ -87,8 +88,64 @@ function buildPaletteIdFromName(name) {
   return `${base}-${suffix}`;
 }
 
+function getSortedPaletteEntries() {
+  return Object.entries(existingPalettes).sort((a, b) => a[1].label.localeCompare(b[1].label));
+}
+
+function renderSavedPaletteList() {
+  const select = document.getElementById('savedPalettesSelect');
+  const selectedBefore = select.value;
+  select.innerHTML = '';
+
+  const entries = getSortedPaletteEntries();
+  if (!entries.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No saved palettes';
+    select.append(option);
+    renderSavedPalettePreview();
+    return;
+  }
+
+  entries.forEach(([id, palette]) => {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = `${palette.label} (${palette.colors.length})`;
+    select.append(option);
+  });
+
+  select.value = existingPalettes[selectedBefore] ? selectedBefore : entries[0][0];
+  renderSavedPalettePreview();
+}
+
+function renderSavedPalettePreview() {
+  const preview = document.getElementById('savedPalettePreviewSwatches');
+  const selectedId = document.getElementById('savedPalettesSelect').value;
+  const palette = existingPalettes[selectedId];
+  preview.innerHTML = '';
+  if (!palette) {
+    return;
+  }
+
+  palette.colors.forEach((color) => {
+    const swatch = document.createElement('div');
+    swatch.className = 'palette-editor-swatch';
+    swatch.style.background = color;
+    swatch.title = color;
+    preview.append(swatch);
+  });
+}
+
+function setDraftPalette({ name, colors, paletteId = null }) {
+  currentEditingPaletteId = paletteId;
+  document.getElementById('paletteNameInput').value = name || '';
+  paletteEditorColors = dedupeColors(colors || []);
+  renderPaletteEditorSwatches();
+}
+
 function renderPaletteEditorSwatches() {
   const container = document.getElementById('paletteEditorSwatches');
+  const status = document.getElementById('draftPaletteStatus');
   container.innerHTML = '';
   paletteEditorColors.forEach((color, index) => {
     const swatch = document.createElement('button');
@@ -102,16 +159,28 @@ function renderPaletteEditorSwatches() {
     });
     container.append(swatch);
   });
+
+  if (paletteEditorColors.length) {
+    status.textContent = `Draft preview: ${paletteEditorColors.length} colors${currentEditingPaletteId ? ' (editing existing palette)' : ''}.`;
+  } else {
+    status.textContent = 'Draft palette is empty.';
+  }
 }
 
 async function persistPalette(name, colors) {
-  existingPalettes[buildPaletteIdFromName(name)] = {
+  const paletteId = currentEditingPaletteId && existingPalettes[currentEditingPaletteId]
+    ? currentEditingPaletteId
+    : buildPaletteIdFromName(name);
+
+  existingPalettes[paletteId] = {
     label: name,
     colors: dedupeColors(colors)
   };
   const result = await ipcRenderer.invoke('save-palettes-config', existingPalettes);
   existingPalettes = result.palettes || {};
+  currentEditingPaletteId = paletteId;
   document.getElementById('paletteConfigPath').textContent = result.path || 'Unavailable';
+  renderSavedPaletteList();
 }
 
 async function importPaletteFromImageFile(file) {
@@ -157,7 +226,7 @@ async function importPaletteFromImageFile(file) {
   }
   const extension = path.extname(file.name || '');
   const baseName = `${path.basename(file.name, extension) || 'Image'} Palette`;
-  await persistPalette(baseName, uniqueColors);
+  setDraftPalette({ name: baseName, colors: uniqueColors, paletteId: null });
 }
 
 async function importPaletteFromFile(file) {
@@ -197,7 +266,7 @@ async function importPaletteFromFile(file) {
   }
 
   const baseName = path.basename(file.name, extension).trim() || 'Imported Palette';
-  await persistPalette(baseName, colors);
+  setDraftPalette({ name: baseName, colors, paletteId: null });
 }
 
 function initializePaletteWindow() {
@@ -207,6 +276,7 @@ function initializePaletteWindow() {
     const initialData = await ipcRenderer.invoke('load-palettes-config');
     existingPalettes = initialData.palettes || {};
     document.getElementById('paletteConfigPath').textContent = initialData.path || 'Unavailable';
+    renderSavedPaletteList();
 
     document.getElementById('addPaletteColorBtn').addEventListener('click', () => {
       const color = normalizeHexColor(document.getElementById('paletteEditorColorInput').value);
@@ -218,8 +288,7 @@ function initializePaletteWindow() {
     });
 
     document.getElementById('clearPaletteEditorBtn').addEventListener('click', () => {
-      paletteEditorColors = [];
-      renderPaletteEditorSwatches();
+      setDraftPalette({ name: document.getElementById('paletteNameInput').value.trim(), colors: [], paletteId: currentEditingPaletteId });
     });
 
     document.getElementById('savePaletteBtn').addEventListener('click', async () => {
@@ -234,10 +303,7 @@ function initializePaletteWindow() {
       }
 
       await persistPalette(paletteName, paletteEditorColors);
-      paletteEditorColors = [];
-      document.getElementById('paletteNameInput').value = '';
-      renderPaletteEditorSwatches();
-      alert('Palette saved. It is now available in the main editor palette list.');
+      alert('Palette saved. Review it below in Palette Management.');
     });
 
     const paletteFileInput = document.getElementById('paletteFileInput');
@@ -252,7 +318,7 @@ function initializePaletteWindow() {
       }
       try {
         await importPaletteFromFile(file);
-        alert('Palette imported.');
+        alert('Palette imported into draft preview. Save it when ready.');
       } catch (error) {
         alert(error.message);
       }
@@ -270,15 +336,57 @@ function initializePaletteWindow() {
       }
       try {
         await importPaletteFromImageFile(file);
-        alert('Palette imported from image.');
+        alert('Image colors imported into draft preview. Save it when ready.');
       } catch (error) {
         alert(error.message);
       }
     });
 
+    document.getElementById('savedPalettesSelect').addEventListener('change', () => {
+      renderSavedPalettePreview();
+    });
+
+    document.getElementById('loadSavedPaletteBtn').addEventListener('click', () => {
+      const paletteId = document.getElementById('savedPalettesSelect').value;
+      const selectedPalette = existingPalettes[paletteId];
+      if (!selectedPalette) {
+        alert('Choose a saved palette first.');
+        return;
+      }
+      setDraftPalette({ name: selectedPalette.label, colors: selectedPalette.colors, paletteId });
+    });
+
+    document.getElementById('deleteSavedPaletteBtn').addEventListener('click', async () => {
+      const paletteId = document.getElementById('savedPalettesSelect').value;
+      const selectedPalette = existingPalettes[paletteId];
+      if (!selectedPalette) {
+        alert('Choose a saved palette first.');
+        return;
+      }
+
+      const shouldDelete = window.confirm(`Delete palette "${selectedPalette.label}"?`);
+      if (!shouldDelete) {
+        return;
+      }
+
+      delete existingPalettes[paletteId];
+      const result = await ipcRenderer.invoke('save-palettes-config', existingPalettes);
+      existingPalettes = result.palettes || {};
+      document.getElementById('paletteConfigPath').textContent = result.path || 'Unavailable';
+
+      if (currentEditingPaletteId === paletteId) {
+        setDraftPalette({ name: '', colors: [], paletteId: null });
+      }
+      renderSavedPaletteList();
+    });
+
     ipcRenderer.on('palette-config-updated', (event, payload) => {
       existingPalettes = payload.palettes || {};
       document.getElementById('paletteConfigPath').textContent = payload.path || 'Unavailable';
+      if (currentEditingPaletteId && !existingPalettes[currentEditingPaletteId]) {
+        currentEditingPaletteId = null;
+      }
+      renderSavedPaletteList();
     });
   });
 }
