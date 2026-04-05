@@ -8,6 +8,12 @@ function getPaletteConfigPath() {
   return path.join(app.getPath('userData'), PALETTE_FILE_NAME);
 }
 
+function ensurePaletteDirectory() {
+  const configPath = getPaletteConfigPath();
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  return configPath;
+}
+
 function sanitizePaletteEntry(entry) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
     return null;
@@ -53,22 +59,26 @@ function sanitizePalettes(input) {
 }
 
 function loadPaletteConfig() {
-  const configPath = getPaletteConfigPath();
+  const configPath = ensurePaletteDirectory();
   if (!fs.existsSync(configPath)) {
+    const defaultPayload = { palettes: {} };
+    fs.writeFileSync(configPath, JSON.stringify(defaultPayload, null, 2), 'utf8');
     return { palettes: {}, path: configPath };
   }
 
   try {
     const raw = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw);
-    return { palettes: sanitizePalettes(parsed.palettes), path: configPath };
+    const palettes = sanitizePalettes(parsed.palettes);
+    return { palettes, path: configPath };
   } catch (error) {
+    fs.writeFileSync(configPath, JSON.stringify({ palettes: {} }, null, 2), 'utf8');
     return { palettes: {}, path: configPath, recoveredFromError: error.message };
   }
 }
 
 function savePaletteConfig(palettes) {
-  const configPath = getPaletteConfigPath();
+  const configPath = ensurePaletteDirectory();
   const sanitizedPalettes = sanitizePalettes(palettes);
   fs.writeFileSync(configPath, JSON.stringify({ palettes: sanitizedPalettes }, null, 2), 'utf8');
   return { palettes: sanitizedPalettes, path: configPath };
