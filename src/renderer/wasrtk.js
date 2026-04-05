@@ -37,6 +37,8 @@ let selectedPalette = 'lospec-journey';
 let activeSelection = null;
 let selectionInteraction = null;
 let selectionClipboard = null;
+let penLastDrawnPoint = null;
+let penLineAnchor = null;
 
 // Panning state
 let isPanning = false;
@@ -168,6 +170,58 @@ class WASRTK {
         return brushShape;
     }
 
+    getPenLastDrawnPoint() {
+        return penLastDrawnPoint;
+    }
+
+    setPenLastDrawnPoint(point) {
+        if (!point) {
+            penLastDrawnPoint = null;
+            return;
+        }
+
+        penLastDrawnPoint = { x: point.x, y: point.y };
+    }
+
+    getPenLineAnchor() {
+        return penLineAnchor;
+    }
+
+    setPenLineAnchor(point) {
+        if (!point) {
+            penLineAnchor = null;
+            return;
+        }
+
+        penLineAnchor = { x: point.x, y: point.y };
+    }
+
+    clearPenLineAnchor() {
+        penLineAnchor = null;
+    }
+
+    getAngleSnappedEndPoint(start, end) {
+        if (!start || !end) {
+            return end;
+        }
+
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance === 0) {
+            return { x: start.x, y: start.y };
+        }
+
+        const step = Math.PI / 4;
+        const angle = Math.atan2(dy, dx);
+        const snappedAngle = Math.round(angle / step) * step;
+
+        return {
+            x: start.x + Math.cos(snappedAngle) * distance,
+            y: start.y + Math.sin(snappedAngle) * distance
+        };
+    }
+
     isAntialiasingEnabled() {
         return antialiasingEnabled;
     }
@@ -204,6 +258,15 @@ class WASRTK {
         strokeCtx = null;
         this.clearOverlay();
         this.renderCurrentFrame();
+    }
+
+    clearStrokeLayer() {
+        if (!strokeCtx || !strokeCanvas) {
+            return;
+        }
+
+        strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+        this.clearOverlay();
     }
 
     // Helper function to convert screen coordinates to canvas coordinates
@@ -531,7 +594,7 @@ class WASRTK {
                 document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
                 return;
             }
-            this.stopDrawing();
+            this.stopDrawing(e);
         });
 
         document.addEventListener('mouseup', (e) => {
@@ -550,7 +613,7 @@ class WASRTK {
                 return;
             }
 
-            this.stopDrawing();
+            this.stopDrawing(e);
         });
         
         mainCanvas.addEventListener('mouseleave', (e) => {
@@ -1367,7 +1430,14 @@ class WASRTK {
         const coords = this.screenToCanvas(e.clientX, e.clientY);
         lastMousePos = coords; // Initialize last position
         this.startShape = coords; // For shape tools
-        tool?.onStart?.(this, { coords });
+        tool?.onStart?.(this, {
+            coords,
+            modifiers: {
+                keepSquare: e.shiftKey,
+                straightLine: e.shiftKey,
+                snapAngle: e.shiftKey && (e.ctrlKey || e.metaKey)
+            }
+        });
     }
 
     draw(e) {
@@ -1380,18 +1450,28 @@ class WASRTK {
             lastMousePos,
             startShape: this.startShape,
             modifiers: {
-                keepSquare: e.shiftKey
+                keepSquare: e.shiftKey,
+                straightLine: e.shiftKey,
+                snapAngle: e.shiftKey && (e.ctrlKey || e.metaKey)
             }
         });
 
         lastMousePos = currentCoords;
     }
 
-    stopDrawing() {
+    stopDrawing(e) {
         if (!isDrawing) return;
         isDrawing = false;
         const tool = this.getCurrentToolConfig();
-        tool?.onStop?.(this, { startShape: this.startShape, lastMousePos });
+        tool?.onStop?.(this, {
+            startShape: this.startShape,
+            lastMousePos,
+            modifiers: {
+                keepSquare: Boolean(e?.shiftKey),
+                straightLine: Boolean(e?.shiftKey),
+                snapAngle: Boolean(e?.shiftKey && (e?.ctrlKey || e?.metaKey))
+            }
+        });
 
         lastMousePos = null;
         this.startShape = null;
