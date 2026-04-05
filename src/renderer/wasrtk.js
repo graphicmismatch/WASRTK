@@ -897,17 +897,21 @@ class WASRTK {
         }
     }
 
-    pickColorAt(x, y) {
+    getColorAtCanvasPosition(x, y) {
         const sampleX = Math.max(0, Math.min(mainCanvas.width - 1, Math.round(x)));
         const sampleY = Math.max(0, Math.min(mainCanvas.height - 1, Math.round(y)));
         const pixel = mainCtx.getImageData(sampleX, sampleY, 1, 1).data;
-        const pickedColor = `#${[pixel[0], pixel[1], pixel[2]].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+        return `#${[pixel[0], pixel[1], pixel[2]].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+    }
+
+    pickColorAt(x, y) {
+        const pickedColor = this.getColorAtCanvasPosition(x, y);
         this.setColor(pickedColor);
         document.getElementById('colorPicker').value = pickedColor;
         return pickedColor;
     }
 
-    updateEyedropperZoomPreview(e, providedColor = null) {
+    updateEyedropperZoomPreview(e) {
         if (currentTool !== 'eyedropper') {
             this.hideEyedropperZoomPreview();
             return;
@@ -921,6 +925,7 @@ class WASRTK {
         }
 
         const coords = this.screenToCanvas(e.clientX, e.clientY);
+        const liveHoverColor = this.getColorAtCanvasPosition(coords.x, coords.y);
         const zoomCtx = zoomCanvas.getContext('2d');
         const sampleSize = 11;
         const halfSize = Math.floor(sampleSize / 2);
@@ -956,7 +961,7 @@ class WASRTK {
         lens.style.left = `${left}px`;
         lens.style.top = `${top}px`;
         lens.hidden = false;
-        zoomLabel.textContent = providedColor || currentColor;
+        zoomLabel.textContent = liveHoverColor;
     }
 
     hideEyedropperZoomPreview() {
