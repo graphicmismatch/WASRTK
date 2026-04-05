@@ -44,8 +44,12 @@ function registerScreenCaptureHandlers() {
 }
 
 function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPaletteEditor } = {}) {
+  function hasValidFilePath(filePath) {
+    return typeof filePath === 'string' && filePath.trim().length > 0;
+  }
+
   ipcMain.handle('save-file', async (event, { filePath, data }) => {
-    if (!filePath) {
+    if (!hasValidFilePath(filePath)) {
       return { success: false, canceled: true };
     }
 
@@ -58,6 +62,10 @@ function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPalette
   });
 
   ipcMain.handle('read-file', async (event, filePath) => {
+    if (!hasValidFilePath(filePath)) {
+      return { success: false, error: 'Invalid file path.' };
+    }
+
     try {
       const data = fs.readFileSync(filePath, 'utf8');
       return { success: true, data };
@@ -67,6 +75,10 @@ function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPalette
   });
 
   ipcMain.handle('read-binary-file', async (event, filePath) => {
+    if (!hasValidFilePath(filePath)) {
+      return { success: false, error: 'Invalid file path.' };
+    }
+
     try {
       const data = fs.readFileSync(filePath);
       return { success: true, data: data.toString('base64') };
