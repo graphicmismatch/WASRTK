@@ -5,13 +5,17 @@ module.exports = {
   onStart(app) {
     app.clearOverlay();
   },
-  onDraw(app, { startShape, currentCoords }) {
+  onDraw(app, { startShape, currentCoords, modifiers }) {
     app.clearOverlay();
-    app.drawShapePreview(startShape, currentCoords, 'rectangle');
+    app.drawShapePreview(startShape, currentCoords, 'rectangle', {
+      keepSquare: Boolean(modifiers?.keepSquare)
+    });
   },
-  onStop(app, { startShape, lastMousePos }) {
+  onStop(app, { startShape, lastMousePos, modifiers }) {
     if (startShape && lastMousePos) {
-      app.commitShape(startShape, lastMousePos, 'rectangle');
+      app.commitShape(startShape, lastMousePos, 'rectangle', {
+        keepSquare: Boolean(modifiers?.keepSquare)
+      });
       app.clearOverlay();
     }
   }
