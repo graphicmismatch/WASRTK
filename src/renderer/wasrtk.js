@@ -246,7 +246,7 @@ class WASRTK {
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
         if (layer && !layer.locked) {
-            const ctx = layer.canvas.getContext('2d');
+            const ctx = this.getLayerContext(layer);
             ctx.save();
             ctx.globalAlpha = currentOpacity;
             ctx.globalCompositeOperation = compositeOperation;
@@ -309,6 +309,19 @@ class WASRTK {
         }
     }
 
+    getLayerContext(layer) {
+        if (!layer || !layer.canvas) {
+            return null;
+        }
+
+        if (!layer.ctx || layer.ctx.canvas !== layer.canvas) {
+            layer.ctx = layer.canvas.getContext('2d');
+            this.applyImageSmoothing(layer.ctx);
+        }
+
+        return layer.ctx;
+    }
+
     // Helper function to update smoothing on all canvases
     updateAllCanvasSmoothing() {
         this.applyImageSmoothing(mainCtx);
@@ -317,7 +330,7 @@ class WASRTK {
         // Update all layer canvases
         frames.forEach(frame => {
             frame.layers.forEach(layer => {
-                const layerCtx = layer.canvas.getContext('2d');
+                const layerCtx = this.getLayerContext(layer);
                 this.applyImageSmoothing(layerCtx);
             });
         });
@@ -357,7 +370,7 @@ class WASRTK {
         };
         initialLayer.canvas.width = mainCanvas.width;
         initialLayer.canvas.height = mainCanvas.height;
-        const layerCtx = initialLayer.canvas.getContext('2d');
+        const layerCtx = this.getLayerContext(initialLayer);
         
         // Apply smoothing settings
         this.applyImageSmoothing(layerCtx);
@@ -1223,7 +1236,7 @@ class WASRTK {
             selectionInteraction = null;
             return;
         }
-        const ctx = layer.canvas.getContext('2d');
+        const ctx = this.getLayerContext(layer);
 
         if (selectionInteraction.mode === 'select') {
             const rawBounds = this.normalizeSelectionBounds(selectionInteraction.start, selectionInteraction.current);
@@ -1265,7 +1278,7 @@ class WASRTK {
         if (!layer || layer.locked) {
             return;
         }
-        const ctx = layer.canvas.getContext('2d');
+        const ctx = this.getLayerContext(layer);
         const targetX = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, Math.round(nextX)));
         const targetY = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, Math.round(nextY)));
 
@@ -1296,7 +1309,7 @@ class WASRTK {
         if (!layer || layer.locked) {
             return;
         }
-        const ctx = layer.canvas.getContext('2d');
+        const ctx = this.getLayerContext(layer);
         activeSelection.sourceSnapshot = ctx.getImageData(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
         ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
         activeSelection.detached = true;
@@ -1312,7 +1325,7 @@ class WASRTK {
         if (!layer || layer.locked) {
             return;
         }
-        const ctx = layer.canvas.getContext('2d');
+        const ctx = this.getLayerContext(layer);
         if (activeSelection.sourceSnapshot) {
             ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
         }
@@ -1336,7 +1349,7 @@ class WASRTK {
         if (!layer || layer.locked) {
             return;
         }
-        const ctx = layer.canvas.getContext('2d');
+        const ctx = this.getLayerContext(layer);
         if (activeSelection.sourceSnapshot) {
             ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
         }
@@ -1379,7 +1392,7 @@ class WASRTK {
                 return;
             }
             this.saveState();
-            const ctx = layer.canvas.getContext('2d');
+            const ctx = this.getLayerContext(layer);
             ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
             this.renderCurrentFrame();
             this.clearSelection();
@@ -1396,7 +1409,7 @@ class WASRTK {
             return;
         }
         this.saveState();
-        const ctx = layer.canvas.getContext('2d');
+        const ctx = this.getLayerContext(layer);
         const pasteX = activeSelection
             ? Math.max(0, Math.min(mainCanvas.width - selectionClipboard.width, activeSelection.x + 1))
             : 0;
@@ -1483,7 +1496,7 @@ class WASRTK {
             const frame = frames[currentFrame];
             const layer = frame.layers[currentLayer];
             if (!layer || layer.locked) return null;
-            return layer.canvas.getContext('2d');
+            return this.getLayerContext(layer);
         })();
         if (!ctx) return;
         ctx.save();
@@ -1569,7 +1582,7 @@ class WASRTK {
                 const frame = frames[currentFrame];
                 const layer = frame.layers[currentLayer];
                 if (!layer || layer.locked) return null;
-                return layer.canvas.getContext('2d');
+                return this.getLayerContext(layer);
             })();
             if (!ctx) return;
             ctx.save();
@@ -1606,12 +1619,32 @@ class WASRTK {
         }
     }
 
-    drawShapePreview(start, end, tool) {
+    getConstrainedShapeEndPoint(start, end, { keepSquare = false, tool } = {}) {
+        if (!keepSquare || (tool !== 'rectangle' && tool !== 'circle')) {
+            return end;
+        }
+
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const size = Math.max(Math.abs(dx), Math.abs(dy));
+        const fallbackSignX = dy === 0 ? 1 : Math.sign(dy);
+        const fallbackSignY = dx === 0 ? 1 : Math.sign(dx);
+        const signX = dx === 0 ? fallbackSignX : Math.sign(dx);
+        const signY = dy === 0 ? fallbackSignY : Math.sign(dy);
+
+        return {
+            x: start.x + (size * signX),
+            y: start.y + (size * signY)
+        };
+    }
+
+    drawShapePreview(start, end, tool, { keepSquare = false } = {}) {
         overlayCtx.save();
         this.applyImageSmoothing(overlayCtx);
         
         const startCoords = antialiasingEnabled ? start : this.roundToPixel(start.x, start.y);
-        const endCoords = antialiasingEnabled ? end : this.roundToPixel(end.x, end.y);
+        const constrainedEnd = this.getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
+        const endCoords = antialiasingEnabled ? constrainedEnd : this.roundToPixel(constrainedEnd.x, constrainedEnd.y);
         
         overlayCtx.strokeStyle = currentColor;
         overlayCtx.lineWidth = brushSize;
@@ -1650,19 +1683,19 @@ class WASRTK {
         overlayCtx.restore();
     }
 
-    commitShape(start, end, tool) {
+    commitShape(start, end, tool, { keepSquare = false } = {}) {
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
         if (!layer || layer.locked) return;
         
-        const ctx = layer.canvas.getContext('2d');
+        const ctx = this.getLayerContext(layer);
         
         if (antialiasingEnabled) {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             
             const startCoords = start;
-            const endCoords = end;
+            const endCoords = this.getConstrainedShapeEndPoint(start, end, { keepSquare, tool });
             ctx.strokeStyle = currentColor;
             ctx.lineWidth = brushSize;
             ctx.globalAlpha = currentOpacity;
@@ -1699,7 +1732,8 @@ class WASRTK {
             ctx.imageSmoothingEnabled = false;
             
             const startCoords = this.roundToPixel(start.x, start.y);
-            const endCoords = this.roundToPixel(end.x, end.y);
+            const constrainedEnd = this.getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
+            const endCoords = this.roundToPixel(constrainedEnd.x, constrainedEnd.y);
             
             ctx.fillStyle = currentColor;
             ctx.strokeStyle = currentColor;
@@ -1881,7 +1915,7 @@ class WASRTK {
             };
             newLayer.canvas.width = mainCanvas.width;
             newLayer.canvas.height = mainCanvas.height;
-            const ctx = newLayer.canvas.getContext('2d');
+            const ctx = this.getLayerContext(newLayer);
             this.applyImageSmoothing(ctx);
             // Optionally fill background for background layer
             if (newLayer.id === 0) {
@@ -1922,7 +1956,7 @@ class WASRTK {
             };
             newLayer.canvas.width = mainCanvas.width;
             newLayer.canvas.height = mainCanvas.height;
-            const ctx = newLayer.canvas.getContext('2d');
+            const ctx = this.getLayerContext(newLayer);
             
             // Disable image smoothing for pixel-perfect rendering
             this.applyImageSmoothing(ctx);
@@ -2208,7 +2242,7 @@ class WASRTK {
             const layerToFlatten = frame.layers[layerToFlattenIndex];
             const layerBelow = frame.layers[layerBelowIndex];
             
-            const ctxBelow = layerBelow.canvas.getContext('2d');
+            const ctxBelow = this.getLayerContext(layerBelow);
             ctxBelow.drawImage(layerToFlatten.canvas, 0, 0);
         });
 
