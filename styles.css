@@ -302,6 +302,42 @@ body {
     padding: 6px 8px;
 }
 
+.brush-preset-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.brush-preset-control label {
+    color: var(--text-light);
+    font-size: 14px;
+}
+
+.brush-preset-control select {
+    flex: 1;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    border: 1px solid var(--bg-med);
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
+.brush-advanced-control {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--text-light);
+    font-size: 13px;
+}
+
+.brush-advanced-control .slider {
+    margin: 0;
+}
+
 .antialiasing-control {
     margin-top: 10px;
     padding: 8px 0;
@@ -320,6 +356,28 @@ body {
 .antialiasing-control input[type="checkbox"] {
     width: 16px;
     height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.fill-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fill-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-light);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.fill-option input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
     accent-color: var(--accent);
     cursor: pointer;
 }

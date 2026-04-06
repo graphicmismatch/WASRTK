@@ -65,10 +65,18 @@
                             <i class="fas fa-eye-dropper"></i>
                         </button>
                     </div>
-                    <div id="fillToleranceSection" class="panel-section" style="display: none;">
+                    <div id="fillToleranceSection" class="panel-section fill-controls" style="display: none;">
                         <label for="fillToleranceSlider">Tolerance:</label>
                         <input type="range" id="fillToleranceSlider" min="0" max="255" value="0" class="slider">
                         <span id="fillToleranceValue">0</span>
+                        <label class="fill-option">
+                            <input type="checkbox" id="fillContiguous" checked>
+                            Contiguous Fill
+                        </label>
+                        <label class="fill-option">
+                            <input type="checkbox" id="fillSampleAllLayers">
+                            Sample All Layers
+                        </label>
                     </div>
                 </div>
 
@@ -85,6 +93,25 @@
                             <option value="circle" selected>Circle</option>
                             <option value="square">Square</option>
                         </select>
+                    </div>
+                    <div class="brush-preset-control">
+                        <label for="brushPresetSelect">Brush Preset:</label>
+                        <select id="brushPresetSelect" title="Choose a brush behavior preset for pen and eraser tools.">
+                            <option value="hard-round" selected>Hard Round</option>
+                            <option value="soft-round">Soft Round</option>
+                            <option value="pixel">Pixel</option>
+                            <option value="textured">Textured</option>
+                        </select>
+                    </div>
+                    <div class="brush-advanced-control">
+                        <label for="brushFlowSlider">Flow:</label>
+                        <input type="range" id="brushFlowSlider" min="1" max="100" value="100" class="slider">
+                        <span id="brushFlowValue">100%</span>
+                    </div>
+                    <div class="brush-advanced-control">
+                        <label for="brushSpacingSlider">Spacing:</label>
+                        <input type="range" id="brushSpacingSlider" min="1" max="100" value="25" class="slider">
+                        <span id="brushSpacingValue">25%</span>
                     </div>
                     <div class="antialiasing-control">
                         <label>

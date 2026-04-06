@@ -11,6 +11,9 @@ let currentColor = '#000000';
 let currentOpacity = 1.0; // Alpha channel support
 let brushSize = 1;
 let brushShape = 'circle';
+let brushPreset = 'hard-round';
+let brushFlow = 1;
+let brushSpacing = 0.25;
 let isDrawing = false;
 let currentFrame = 0;
 let currentLayer = 0;
@@ -32,6 +35,8 @@ let zoom = 1;
 let lastMousePos = null; // Store last mouse position for line interpolation
 let antialiasingEnabled = true; // Global antialiasing toggle
 let fillTolerance = 0; // Tolerance for flood fill
+let fillContiguous = true;
+let fillSampleAllLayers = false;
 let draggedFrameIndex = null;
 let selectedPalette = 'lospec-journey';
 let activeSelection = null;
@@ -168,6 +173,10 @@ class WASRTK {
 
     getBrushShape() {
         return brushShape;
+    }
+
+    getBrushPreset() {
+        return brushPreset;
     }
 
     getPenLastDrawnPoint() {
@@ -528,9 +537,24 @@ class WASRTK {
             fillTolerance = parseInt(e.target.value);
             document.getElementById('fillToleranceValue').textContent = fillTolerance;
         });
+        document.getElementById('fillContiguous').addEventListener('change', (e) => {
+            fillContiguous = e.target.checked;
+        });
+        document.getElementById('fillSampleAllLayers').addEventListener('change', (e) => {
+            fillSampleAllLayers = e.target.checked;
+        });
 
         document.getElementById('brushShapeSelect').addEventListener('change', (e) => {
             this.setBrushShape(e.target.value);
+        });
+        document.getElementById('brushPresetSelect').addEventListener('change', (e) => {
+            this.setBrushPreset(e.target.value);
+        });
+        document.getElementById('brushFlowSlider').addEventListener('input', (e) => {
+            this.setBrushFlow(parseInt(e.target.value, 10));
+        });
+        document.getElementById('brushSpacingSlider').addEventListener('input', (e) => {
+            this.setBrushSpacing(parseInt(e.target.value, 10));
         });
 
         // Antialiasing toggle
@@ -939,6 +963,14 @@ class WASRTK {
         const brushShapeControl = document.querySelector('.brush-shape-control');
         const brushShapeTools = ['pen', 'line', 'eraser'];
         brushShapeControl.style.display = brushShapeTools.includes(tool) ? 'flex' : 'none';
+
+        const brushPresetControl = document.querySelector('.brush-preset-control');
+        const brushPresetTools = ['pen', 'eraser'];
+        brushPresetControl.style.display = brushPresetTools.includes(tool) ? 'flex' : 'none';
+
+        document.querySelectorAll('.brush-advanced-control').forEach((control) => {
+            control.style.display = brushPresetTools.includes(tool) ? 'grid' : 'none';
+        });
         
         // Hide brush preview if switching away from pen/eraser
         if (tool !== 'pen' && tool !== 'eraser') {
@@ -1080,6 +1112,31 @@ class WASRTK {
         }
     }
 
+    setBrushPreset(preset) {
+        const supportedPresets = new Set(['hard-round', 'soft-round', 'pixel', 'textured']);
+        brushPreset = supportedPresets.has(preset) ? preset : 'hard-round';
+        document.getElementById('brushPresetSelect').value = brushPreset;
+        this.updateBrushPreview();
+        this.updateStatusBar();
+    }
+
+    setBrushFlow(flowPercent) {
+        const normalized = Math.max(1, Math.min(100, Number(flowPercent) || 100));
+        brushFlow = normalized / 100;
+        document.getElementById('brushFlowSlider').value = normalized;
+        document.getElementById('brushFlowValue').textContent = `${normalized}%`;
+        this.updateBrushPreview();
+        this.updateStatusBar();
+    }
+
+    setBrushSpacing(spacingPercent) {
+        const normalized = Math.max(1, Math.min(100, Number(spacingPercent) || 25));
+        brushSpacing = normalized / 100;
+        document.getElementById('brushSpacingSlider').value = normalized;
+        document.getElementById('brushSpacingValue').textContent = `${normalized}%`;
+        this.updateStatusBar();
+    }
+
     setOpacity(opacity) {
         currentOpacity = opacity / 100;
         this.updateBrushPreview();
@@ -1123,22 +1180,10 @@ class WASRTK {
         this.applyImageSmoothing(ctx);
 
         // Draw brush preview
-        ctx.fillStyle = currentColor;
         ctx.globalAlpha = currentOpacity;
         const centerX = previewCanvas.width / 2;
         const centerY = previewCanvas.height / 2;
-        
-        if (brushSize === 1) {
-            ctx.fillRect(Math.round(centerX), Math.round(centerY), 1, 1);
-        } else if (brushShape === 'square') {
-            const size = Math.round(brushSize);
-            const offset = Math.floor(size / 2);
-            ctx.fillRect(Math.round(centerX) - offset, Math.round(centerY) - offset, size, size);
-        } else {
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, brushSize / 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        this.drawBrushStamp(ctx, centerX, centerY, { color: currentColor });
         
     }
 
@@ -1514,65 +1559,102 @@ class WASRTK {
     }
 
     floodFill(ctx, startX, startY, fillColor) {
-        const safeStartX = Math.max(0, Math.min(ctx.canvas.width - 1, Math.round(startX)));
-        const safeStartY = Math.max(0, Math.min(ctx.canvas.height - 1, Math.round(startY)));
+        const width = ctx.canvas.width;
+        const height = ctx.canvas.height;
+        const safeStartX = Math.max(0, Math.min(width - 1, Math.round(startX)));
+        const safeStartY = Math.max(0, Math.min(height - 1, Math.round(startY)));
 
         if (!Number.isFinite(safeStartX) || !Number.isFinite(safeStartY)) {
             return;
         }
 
-        const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-        const pixels = imageData.data;
-        
-        const startPos = (safeStartY * ctx.canvas.width + safeStartX) * 4;
-        const startR = pixels[startPos];
-        const startG = pixels[startPos + 1];
-        const startB = pixels[startPos + 2];
-        const startA = pixels[startPos + 3];
-        
+        const targetImageData = ctx.getImageData(0, 0, width, height);
+        const targetPixels = targetImageData.data;
+        const samplePixels = fillSampleAllLayers ? this.getMergedVisibleLayersImageData().data : targetPixels;
+
+        const startPos = (safeStartY * width + safeStartX) * 4;
+        const startR = samplePixels[startPos];
+        const startG = samplePixels[startPos + 1];
+        const startB = samplePixels[startPos + 2];
+
         const fillR = parseInt(fillColor.substr(1, 2), 16);
         const fillG = parseInt(fillColor.substr(3, 2), 16);
         const fillB = parseInt(fillColor.substr(5, 2), 16);
-        
-        if (startR === fillR && startG === fillG && startB === fillB) return;
-        
-        const colorDistance = (r1, g1, b1, r2, g2, b2) => {
-            return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
-        };
-        
-        const pixelsToFill = [];
-        
-        const stack = [[safeStartX, safeStartY]];
-        const visited = new Set();
-        
-        while (stack.length) {
-            const [x, y] = stack.pop();
-            const pos = (y * ctx.canvas.width + x) * 4;
-            
-            if (x < 0 || x >= ctx.canvas.width || y < 0 || y >= ctx.canvas.height) continue;
-            
-            const r = pixels[pos];
-            const g = pixels[pos + 1];
-            const b = pixels[pos + 2];
 
-            if (visited.has(pos) || colorDistance(r, g, b, startR, startG, startB) > fillTolerance) {
-                continue;
-            }
-
-            pixelsToFill.push(pos);
-            visited.add(pos);
-            
-            stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        if (!fillSampleAllLayers && startR === fillR && startG === fillG && startB === fillB) {
+            return;
         }
-        
-        pixelsToFill.forEach(pos => {
-            pixels[pos] = fillR;
-            pixels[pos + 1] = fillG;
-            pixels[pos + 2] = fillB;
-            pixels[pos + 3] = 255;
+
+        const colorDistance = (index) => {
+            const r = samplePixels[index];
+            const g = samplePixels[index + 1];
+            const b = samplePixels[index + 2];
+            return Math.sqrt(
+                Math.pow(r - startR, 2) +
+                Math.pow(g - startG, 2) +
+                Math.pow(b - startB, 2)
+            );
+        };
+
+        const pixelsToFill = [];
+
+        if (fillContiguous) {
+            const stack = [[safeStartX, safeStartY]];
+            const visited = new Set();
+
+            while (stack.length) {
+                const [x, y] = stack.pop();
+                if (x < 0 || x >= width || y < 0 || y >= height) {
+                    continue;
+                }
+
+                const pos = (y * width + x) * 4;
+                if (visited.has(pos)) {
+                    continue;
+                }
+
+                visited.add(pos);
+                if (colorDistance(pos) > fillTolerance) {
+                    continue;
+                }
+
+                pixelsToFill.push(pos);
+                stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+            }
+        } else {
+            for (let pos = 0; pos < samplePixels.length; pos += 4) {
+                if (colorDistance(pos) <= fillTolerance) {
+                    pixelsToFill.push(pos);
+                }
+            }
+        }
+
+        pixelsToFill.forEach((pos) => {
+            targetPixels[pos] = fillR;
+            targetPixels[pos + 1] = fillG;
+            targetPixels[pos + 2] = fillB;
+            targetPixels[pos + 3] = 255;
         });
-        
-        ctx.putImageData(imageData, 0, 0);
+
+        ctx.putImageData(targetImageData, 0, 0);
+    }
+
+    getMergedVisibleLayersImageData() {
+        const frame = frames[currentFrame];
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = mainCanvas.width;
+        tempCanvas.height = mainCanvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        this.applyImageSmoothing(tempCtx);
+
+        frame.layers.forEach((layer) => {
+            if (!layer.visible) {
+                return;
+            }
+            tempCtx.drawImage(layer.canvas, 0, 0);
+        });
+
+        return tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
     }
 
     drawLine(x1, y1, x2, y2, useStrokeCtx = false) {
@@ -1841,6 +1923,107 @@ class WASRTK {
                 }
             }
         }
+    }
+
+    drawBrushStamp(ctx, x, y, { color = currentColor } = {}) {
+        const usePixelPreset = brushPreset === 'pixel';
+        const shape = usePixelPreset ? 'square' : brushShape;
+        const size = Math.max(1, brushSize);
+        const isSquare = shape === 'square';
+        const originalAlpha = ctx.globalAlpha;
+        const baseAlpha = originalAlpha * brushFlow;
+        ctx.globalAlpha = baseAlpha;
+
+        if (usePixelPreset || !antialiasingEnabled) {
+            ctx.fillStyle = color;
+            this.drawPixelPerfectBrushStamp(ctx, x, y, size, shape);
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        if (brushPreset === 'soft-round' && !isSquare) {
+            const radius = Math.max(0.5, size / 2);
+            const parsedColor = normalizeHexColor(color) || '#000000';
+            const rgb = {
+                r: parseInt(parsedColor.slice(1, 3), 16),
+                g: parseInt(parsedColor.slice(3, 5), 16),
+                b: parseInt(parsedColor.slice(5, 7), 16)
+            };
+            const gradient = ctx.createRadialGradient(x, y, radius * 0.05, x, y, radius);
+            gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`);
+            gradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        if (brushPreset === 'textured') {
+            ctx.fillStyle = color;
+            const scatterCount = Math.max(8, Math.round(size * 2));
+            for (let i = 0; i < scatterCount; i++) {
+                const angle = ((i * 97) % 360) * (Math.PI / 180);
+                const radius = (Math.sin((x + y + i) * 12.9898) * 0.5 + 0.5) * (size / 2);
+                const dotX = x + Math.cos(angle) * radius;
+                const dotY = y + Math.sin(angle) * radius;
+                const dotSize = Math.max(1, Math.round(size / 6));
+                ctx.globalAlpha = baseAlpha * (0.35 + ((i % 7) / 10));
+                ctx.fillRect(Math.round(dotX), Math.round(dotY), dotSize, dotSize);
+            }
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        ctx.fillStyle = color;
+        if (isSquare) {
+            const offset = size / 2;
+            ctx.fillRect(x - offset, y - offset, size, size);
+            return;
+        }
+
+        if (size === 1) {
+            ctx.fillRect(x, y, 1, 1);
+            return;
+        }
+
+        ctx.beginPath();
+        ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = originalAlpha;
+    }
+
+    drawBrushLine(ctx, x1, y1, x2, y2, { color = currentColor } = {}) {
+        const usePixelPreset = brushPreset === 'pixel';
+        const shape = usePixelPreset ? 'square' : brushShape;
+        const stampSpacing = Math.max(0.25, brushSize * brushSpacing);
+
+        if (usePixelPreset || !antialiasingEnabled) {
+            const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
+            ctx.fillStyle = color;
+            points.forEach(({ x, y }) => {
+                this.drawPixelPerfectBrushStamp(ctx, x, y, brushSize, shape);
+            });
+            return;
+        }
+
+        if (brushPreset === 'soft-round' || brushPreset === 'textured' || shape === 'square') {
+            const points = this.getInterpolatedStrokePoints(x1, y1, x2, y2, stampSpacing);
+            points.forEach(({ x, y }) => {
+                this.drawBrushStamp(ctx, x, y, { color });
+            });
+            return;
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = brushSize;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
     }
 
     drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
@@ -2410,7 +2593,7 @@ class WASRTK {
         
         document.getElementById('currentTool').textContent = toolNames[currentTool] || 'Unknown Tool';
         document.getElementById('currentColor').textContent = `Color: ${currentColor}`;
-        document.getElementById('brushSize').textContent = `Size: ${brushSize}px`;
+        document.getElementById('brushSize').textContent = `Size: ${brushSize}px (${brushPreset}, flow ${Math.round(brushFlow * 100)}%, spacing ${Math.round(brushSpacing * 100)}%)`;
         document.getElementById('currentFrame').textContent = `Frame: ${currentFrame + 1}`;
         document.getElementById('totalFrames').textContent = `Total: ${frames.length}`;
         document.getElementById('canvasDimensions').textContent = `${mainCanvas.width}x${mainCanvas.height}`;
@@ -2722,6 +2905,12 @@ class WASRTK {
                     currentOpacity,
                     brushSize,
                     brushShape,
+                    brushPreset,
+                    brushFlow,
+                    brushSpacing,
+                    fillTolerance,
+                    fillContiguous,
+                    fillSampleAllLayers,
                     zoom
                 }
             });
@@ -2998,7 +3187,8 @@ class WASRTK {
             const size = Math.max(2, brushSize * zoom); // Ensure minimum 2px size for visibility
             brushPreview.style.width = size + 'px';
             brushPreview.style.height = size + 'px';
-            brushPreview.style.borderRadius = brushShape === 'square' ? '0' : '50%';
+            const squarePreview = brushPreset === 'pixel' || brushShape === 'square';
+            brushPreview.style.borderRadius = squarePreview ? '0' : '50%';
         }
         
         // Set the preview color based on tool
@@ -3105,6 +3295,12 @@ class WASRTK {
             currentOpacity = settings.currentOpacity;
             brushSize = settings.brushSize;
             brushShape = settings.brushShape;
+            brushPreset = settings.brushPreset;
+            brushFlow = settings.brushFlow;
+            brushSpacing = settings.brushSpacing;
+            fillTolerance = settings.fillTolerance;
+            fillContiguous = settings.fillContiguous;
+            fillSampleAllLayers = settings.fillSampleAllLayers;
             zoom = settings.zoom;
 
             this.updateAllCanvasSmoothing();
@@ -3128,6 +3324,15 @@ class WASRTK {
             document.getElementById('brushSizeSlider').value = brushSize;
             document.getElementById('brushSizeValue').textContent = brushSize + 'px';
             document.getElementById('brushShapeSelect').value = brushShape;
+            document.getElementById('brushPresetSelect').value = brushPreset;
+            document.getElementById('brushFlowSlider').value = Math.round(brushFlow * 100);
+            document.getElementById('brushFlowValue').textContent = `${Math.round(brushFlow * 100)}%`;
+            document.getElementById('brushSpacingSlider').value = Math.round(brushSpacing * 100);
+            document.getElementById('brushSpacingValue').textContent = `${Math.round(brushSpacing * 100)}%`;
+            document.getElementById('fillToleranceSlider').value = fillTolerance;
+            document.getElementById('fillToleranceValue').textContent = fillTolerance;
+            document.getElementById('fillContiguous').checked = fillContiguous;
+            document.getElementById('fillSampleAllLayers').checked = fillSampleAllLayers;
             document.getElementById('opacitySlider').value = currentOpacity * 100;
             document.getElementById('opacityValue').textContent = Math.round(currentOpacity * 100) + '%';
 

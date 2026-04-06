@@ -18,26 +18,83 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 
 ## Project task list
 
-- [x] Add additional professional-grade tool types (selection tool).
-- [x] Add selection workflows for region move/edit.
-- [x] Add palette choices for fast color workflow switching.
-- [x] Expand selection editing with copy/cut/paste, nudge, and constrained marquee.
-- [x] Fix selection edge cases (undo noise, out-of-bounds drags, locked-layer safety).
-- [x] Verify selection interactions do not interfere with frame/layer operations or other tools.
-- [x] Fix flood-fill accuracy so fills remain consistent across zoom levels.
-- [x] Align selection move workflow with paint.net-style drag-and-commit behavior.
-- [x] Require explicit Enter to commit detached selection moves (Escape to cancel restore).
-- [x] Reset selection state automatically after Enter commit.
-- [x] Add palette creation/import support for editor, image extraction, and Lospec-compatible files (excluding Paint.NET/Photoshop formats).
-- [x] Improve palette image import extraction quality so representative colors are detected reliably.
-- [x] Add palette management workflow with saved-palette preview and draft preview before committing to the palette list.
-- [x] Add an eyedropper tool with zoomed pick-area preview for easier color selection.
-- [x] Keep eyedropper preview hex label live-updating while hovering before click.
-- [x] Harden export helpers (case-insensitive MIME lookup, safer layer iteration, and FPS fallback for GIF delay).
-- [x] Improve config/file IPC resilience (auto-recover palette config file + validate read/write file paths).
-- [x] Add pen tool straight-line assist (Shift from last point + Ctrl/Cmd snap to 45° increments like Aseprite).
-- [x] Cache per-layer 2D rendering contexts to reduce repeated context lookups in hot drawing/render paths.
-- [x] Constrain rectangle and ellipse tools with Shift so previews/commits become perfect squares and circles.
+- [x] Add additional professional-grade tool types (selection tool). **Done**
+- [x] Add selection workflows for region move/edit. **Done**
+- [x] Add palette choices for fast color workflow switching. **Done**
+- [x] Expand selection editing with copy/cut/paste, nudge, and constrained marquee. **Done**
+- [x] Fix selection edge cases (undo noise, out-of-bounds drags, locked-layer safety). **Done**
+- [x] Verify selection interactions do not interfere with frame/layer operations or other tools. **Done**
+- [x] Fix flood-fill accuracy so fills remain consistent across zoom levels. **Done**
+- [x] Align selection move workflow with paint.net-style drag-and-commit behavior. **Done**
+- [x] Require explicit Enter to commit detached selection moves (Escape to cancel restore). **Done**
+- [x] Reset selection state automatically after Enter commit. **Done**
+- [x] Add palette creation/import support for editor, image extraction, and Lospec-compatible files (excluding Paint.NET/Photoshop formats). **Done**
+- [x] Improve palette image import extraction quality so representative colors are detected reliably. **Done**
+- [x] Add palette management workflow with saved-palette preview and draft preview before committing to the palette list. **Done**
+- [x] Add an eyedropper tool with zoomed pick-area preview for easier color selection. **Done**
+- [x] Keep eyedropper preview hex label live-updating while hovering before click. **Done**
+- [x] Harden export helpers (case-insensitive MIME lookup, safer layer iteration, and FPS fallback for GIF delay). **Done**
+- [x] Improve config/file IPC resilience (auto-recover palette config file + validate read/write file paths). **Done**
+- [x] Add pen tool straight-line assist (Shift from last point + Ctrl/Cmd snap to 45° increments like Aseprite). **Done**
+- [x] Cache per-layer 2D rendering contexts to reduce repeated context lookups in hot drawing/render paths. **Done**
+- [x] Constrain rectangle and ellipse tools with Shift so previews/commits become perfect squares and circles. **Done**
+- [x] Start Phase 1 implementation by expanding fill controls with contiguous toggle and sample-all-layers behavior. **Done**
+- [x] Add initial brush engine presets (hard round, soft round, pixel, textured) with live preset switching. **Done**
+- [x] Add brush flow and spacing controls wired into the brush engine for pen/eraser presets. **Done**
+
+
+## Fully fledged drawing app plan
+
+This roadmap expands WASRTK from a focused animation sketch tool into a full-featured drawing and illustration application.
+
+### Phase 1 — Core drawing power
+
+- [x] Add brush engine presets (hard/soft round, textured, pixel) with size, opacity, flow, spacing, and smoothing controls. **Done**
+- [ ] Add pressure sensitivity support (size/opacity/flow) for drawing tablets.
+- [ ] Add non-destructive transform tools (scale, rotate, skew, flip) for selections and full layers.
+- [ ] Add lasso/polygon/magic-wand selection modes with anti-alias and feather options.
+- [x] Add advanced fill controls (tolerance slider, contiguous toggle, sample-all-layers). **Done**
+
+### Phase 2 — Layering and composition
+
+- [ ] Add layer groups/folders with collapse/expand, locking, and group visibility controls.
+- [ ] Add blend modes (Normal, Multiply, Screen, Overlay, etc.) and per-layer opacity.
+- [ ] Add adjustment layers (levels, curves, hue/saturation, brightness/contrast).
+- [ ] Add clipping masks and alpha-lock workflows for targeted painting.
+- [ ] Add smart guides, rulers, and snapping for precise layout alignment.
+
+### Phase 3 — Productivity and pro workflow
+
+- [ ] Add customizable keyboard shortcuts and command palette search.
+- [ ] Add dockable/resizable panels (layers, colors, history, navigator, brush settings).
+- [ ] Add robust history timeline with named snapshots and non-linear jump points.
+- [ ] Add macro/action recording for repeated drawing and editing workflows.
+- [ ] Add autosave, crash recovery, and backup version history controls.
+
+### Phase 4 — File compatibility and output
+
+- [ ] Add import support for PSD (core layer data), Aseprite, and common image formats with metadata retention where possible.
+- [ ] Add export presets for print, web, social media, sprite sheets, and animation pipelines.
+- [ ] Add color management (sRGB/Display P3 profiles, soft proofing, gamma-safe export).
+- [ ] Add vector text layers with font controls, alignment, and path text support.
+- [ ] Add batch export and asset slicing workflows for game/UI pipelines.
+
+### Phase 5 — Collaboration and ecosystem
+
+- [ ] Add plugin API for custom tools, importers/exporters, and automation extensions.
+- [ ] Add cloud sync and optional real-time collaboration for shared projects.
+- [ ] Add in-app asset browser for brushes, palettes, textures, and community templates.
+- [ ] Add onboarding tutorials, contextual tips, and searchable help docs inside the app.
+- [ ] Add telemetry-free performance diagnostics panel to help users optimize large projects.
+
+### Success criteria for “fully fledged” status
+
+- [ ] Professional drawing workflow is possible without leaving WASRTK for core illustration tasks.
+- [ ] Large projects (100+ layers, high-resolution canvases) remain responsive on mid-range hardware.
+- [ ] File interoperability is sufficient for mixed-tool studio workflows.
+- [ ] New users can complete first illustration workflows via onboarding without external docs.
+- [ ] Power users can tailor the UI/shortcuts/tools to match established workflows.
+
 
 ## Getting started
 
