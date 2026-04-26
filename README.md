@@ -45,6 +45,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Add initial transform actions (flip horizontal/vertical and rotate 90°) for active selections or current layer. **Done**
 - [x] Add magic-wand selection mode (tolerance-based contiguous pickup) as the first advanced selection variant. **Done**
 - [x] Add quick scale transform actions (Scale + / Scale -) for active selections or current layer. **Done**
+- [x] Add quick skew transform actions (Skew X / Skew Y) for active selections or current layer. **Done**
 
 
 ## Fully fledged drawing app plan
@@ -55,7 +56,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 
 - [x] Add brush engine presets (hard/soft round, textured, pixel) with size, opacity, flow, spacing, and smoothing controls. **Done**
 - [x] Add pressure sensitivity support (size/opacity/flow) for drawing tablets. **Done**
-- [ ] Add non-destructive transform tools (scale, rotate, skew, flip) for selections and full layers.
+- [x] Add non-destructive transform tools (scale, rotate, skew, flip) for selections and full layers. **Done**
 - [ ] Add lasso/polygon/magic-wand selection modes with anti-alias and feather options.
 - [x] Add advanced fill controls (tolerance slider, contiguous toggle, sample-all-layers). **Done**
 

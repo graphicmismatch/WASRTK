@@ -696,7 +696,7 @@ body {
 
 .transform-controls {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
     gap: 6px;
     margin-bottom: 10px;
 }

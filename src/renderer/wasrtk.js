@@ -750,6 +750,8 @@ class WASRTK {
         document.getElementById('rotate90Btn').addEventListener('click', () => this.applyTransformAction({ rotate90: true }));
         document.getElementById('scaleUpBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 1.25, scaleY: 1.25 }));
         document.getElementById('scaleDownBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 0.8, scaleY: 0.8 }));
+        document.getElementById('skewXBtn').addEventListener('click', () => this.applyTransformAction({ skewX: 12 * (Math.PI / 180) }));
+        document.getElementById('skewYBtn').addEventListener('click', () => this.applyTransformAction({ skewY: 12 * (Math.PI / 180) }));
 
         // Onion skinning
         document.getElementById('onionSkinningEnabled').addEventListener('change', (e) => {
@@ -1610,16 +1612,16 @@ class WASRTK {
         this.renderCurrentFrame();
     }
 
-    applyTransformAction({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
+    applyTransformAction({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
         if (activeSelection) {
-            this.transformActiveSelection({ flipX, flipY, rotate90, scaleX, scaleY });
+            this.transformActiveSelection({ flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
             return;
         }
 
-        this.transformCurrentLayer({ flipX, flipY, rotate90, scaleX, scaleY });
+        this.transformCurrentLayer({ flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
     }
 
-    buildTransformedImageData(sourceImageData, { flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
+    buildTransformedImageData(sourceImageData, { flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
         const sourceCanvas = document.createElement('canvas');
         sourceCanvas.width = sourceImageData.width;
         sourceCanvas.height = sourceImageData.height;
@@ -1630,13 +1632,18 @@ class WASRTK {
         const swapAxes = Boolean(rotate90);
         const baseWidth = swapAxes ? sourceCanvas.height : sourceCanvas.width;
         const baseHeight = swapAxes ? sourceCanvas.width : sourceCanvas.height;
-        outputCanvas.width = Math.max(1, Math.round(baseWidth * Math.abs(scaleX)));
-        outputCanvas.height = Math.max(1, Math.round(baseHeight * Math.abs(scaleY)));
+        const scaledWidth = Math.max(1, Math.round(baseWidth * Math.abs(scaleX)));
+        const scaledHeight = Math.max(1, Math.round(baseHeight * Math.abs(scaleY)));
+        const skewPadX = Math.ceil(Math.abs(Math.tan(skewX)) * scaledHeight);
+        const skewPadY = Math.ceil(Math.abs(Math.tan(skewY)) * scaledWidth);
+        outputCanvas.width = Math.max(1, scaledWidth + skewPadX);
+        outputCanvas.height = Math.max(1, scaledHeight + skewPadY);
         const outCtx = outputCanvas.getContext('2d');
         this.applyImageSmoothing(outCtx);
 
         outCtx.save();
         outCtx.translate(outputCanvas.width / 2, outputCanvas.height / 2);
+        outCtx.transform(1, Math.tan(skewY), Math.tan(skewX), 1, 0, 0);
         if (rotate90) {
             outCtx.rotate(Math.PI / 2);
         }
@@ -1647,7 +1654,7 @@ class WASRTK {
         return outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
     }
 
-    transformActiveSelection({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
+    transformActiveSelection({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
         if (!activeSelection) {
             return;
         }
@@ -1656,7 +1663,7 @@ class WASRTK {
             this.detachSelectionFromLayer();
         }
 
-        activeSelection.imageData = this.buildTransformedImageData(activeSelection.imageData, { flipX, flipY, rotate90, scaleX, scaleY });
+        activeSelection.imageData = this.buildTransformedImageData(activeSelection.imageData, { flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
         activeSelection.width = activeSelection.imageData.width;
         activeSelection.height = activeSelection.imageData.height;
 
@@ -1668,7 +1675,7 @@ class WASRTK {
         this.drawSelectionOutline(activeSelection, { showPreview: true });
     }
 
-    transformCurrentLayer({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
+    transformCurrentLayer({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
         if (!layer || layer.locked) {
@@ -1679,7 +1686,7 @@ class WASRTK {
 
         const ctx = this.getLayerContext(layer);
         const sourceImageData = ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-        const transformed = this.buildTransformedImageData(sourceImageData, { flipX, flipY, rotate90, scaleX, scaleY });
+        const transformed = this.buildTransformedImageData(sourceImageData, { flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
 
         ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
 
