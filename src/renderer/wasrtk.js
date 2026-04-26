@@ -11,6 +11,13 @@ let currentColor = '#000000';
 let currentOpacity = 1.0; // Alpha channel support
 let brushSize = 1;
 let brushShape = 'circle';
+let brushPreset = 'hard-round';
+let brushFlow = 1;
+let brushSpacing = 0.25;
+let pressureSensitivityEnabled = true;
+let pressureAffectsSize = true;
+let pressureAffectsFlow = true;
+let currentInputPressure = 1;
 let isDrawing = false;
 let currentFrame = 0;
 let currentLayer = 0;
@@ -32,11 +39,14 @@ let zoom = 1;
 let lastMousePos = null; // Store last mouse position for line interpolation
 let antialiasingEnabled = true; // Global antialiasing toggle
 let fillTolerance = 0; // Tolerance for flood fill
+let fillContiguous = true;
+let fillSampleAllLayers = false;
 let draggedFrameIndex = null;
 let selectedPalette = 'lospec-journey';
 let activeSelection = null;
 let selectionInteraction = null;
 let selectionClipboard = null;
+let selectionMode = 'rectangle';
 let penLastDrawnPoint = null;
 let penLineAnchor = null;
 
@@ -168,6 +178,10 @@ class WASRTK {
 
     getBrushShape() {
         return brushShape;
+    }
+
+    getBrushPreset() {
+        return brushPreset;
     }
 
     getPenLastDrawnPoint() {
@@ -528,9 +542,43 @@ class WASRTK {
             fillTolerance = parseInt(e.target.value);
             document.getElementById('fillToleranceValue').textContent = fillTolerance;
         });
+        document.getElementById('fillContiguous').addEventListener('change', (e) => {
+            fillContiguous = e.target.checked;
+        });
+        document.getElementById('fillSampleAllLayers').addEventListener('change', (e) => {
+            fillSampleAllLayers = e.target.checked;
+        });
+        document.getElementById('selectionModeSelect').addEventListener('change', (e) => {
+            if (e.target.value === 'magic-wand' || e.target.value === 'lasso') {
+                selectionMode = e.target.value;
+                return;
+            }
+            selectionMode = 'rectangle';
+        });
 
         document.getElementById('brushShapeSelect').addEventListener('change', (e) => {
             this.setBrushShape(e.target.value);
+        });
+        document.getElementById('brushPresetSelect').addEventListener('change', (e) => {
+            this.setBrushPreset(e.target.value);
+        });
+        document.getElementById('brushFlowSlider').addEventListener('input', (e) => {
+            this.setBrushFlow(parseInt(e.target.value, 10));
+        });
+        document.getElementById('brushSpacingSlider').addEventListener('input', (e) => {
+            this.setBrushSpacing(parseInt(e.target.value, 10));
+        });
+        document.getElementById('pressureSensitivityEnabled').addEventListener('change', (e) => {
+            pressureSensitivityEnabled = e.target.checked;
+            this.updateStatusBar();
+        });
+        document.getElementById('pressureAffectsSize').addEventListener('change', (e) => {
+            pressureAffectsSize = e.target.checked;
+            this.updateStatusBar();
+        });
+        document.getElementById('pressureAffectsFlow').addEventListener('change', (e) => {
+            pressureAffectsFlow = e.target.checked;
+            this.updateStatusBar();
         });
 
         // Antialiasing toggle
@@ -701,6 +749,13 @@ class WASRTK {
         document.getElementById('moveLayerUpBtn').addEventListener('click', () => this.moveLayerUp());
         document.getElementById('moveLayerDownBtn').addEventListener('click', () => this.moveLayerDown());
         document.getElementById('flattenLayerBtn').addEventListener('click', () => this.flattenLayer());
+        document.getElementById('flipHorizontalBtn').addEventListener('click', () => this.applyTransformAction({ flipX: true }));
+        document.getElementById('flipVerticalBtn').addEventListener('click', () => this.applyTransformAction({ flipY: true }));
+        document.getElementById('rotate90Btn').addEventListener('click', () => this.applyTransformAction({ rotate90: true }));
+        document.getElementById('scaleUpBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 1.25, scaleY: 1.25 }));
+        document.getElementById('scaleDownBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 0.8, scaleY: 0.8 }));
+        document.getElementById('skewXBtn').addEventListener('click', () => this.applyTransformAction({ skewX: 12 * (Math.PI / 180) }));
+        document.getElementById('skewYBtn').addEventListener('click', () => this.applyTransformAction({ skewY: 12 * (Math.PI / 180) }));
 
         // Onion skinning
         document.getElementById('onionSkinningEnabled').addEventListener('change', (e) => {
@@ -936,9 +991,22 @@ class WASRTK {
             toleranceSection.style.display = 'none';
         }
 
+        const selectionModeSection = document.getElementById('selectionModeSection');
+        selectionModeSection.style.display = tool === 'selection' ? 'flex' : 'none';
+
         const brushShapeControl = document.querySelector('.brush-shape-control');
         const brushShapeTools = ['pen', 'line', 'eraser'];
         brushShapeControl.style.display = brushShapeTools.includes(tool) ? 'flex' : 'none';
+
+        const brushPresetControl = document.querySelector('.brush-preset-control');
+        const brushPresetTools = ['pen', 'eraser'];
+        brushPresetControl.style.display = brushPresetTools.includes(tool) ? 'flex' : 'none';
+
+        document.querySelectorAll('.brush-advanced-control').forEach((control) => {
+            control.style.display = brushPresetTools.includes(tool) ? 'grid' : 'none';
+        });
+        const pressureControls = document.querySelector('.pressure-controls');
+        pressureControls.style.display = brushPresetTools.includes(tool) ? 'flex' : 'none';
         
         // Hide brush preview if switching away from pen/eraser
         if (tool !== 'pen' && tool !== 'eraser') {
@@ -1080,6 +1148,31 @@ class WASRTK {
         }
     }
 
+    setBrushPreset(preset) {
+        const supportedPresets = new Set(['hard-round', 'soft-round', 'pixel', 'textured']);
+        brushPreset = supportedPresets.has(preset) ? preset : 'hard-round';
+        document.getElementById('brushPresetSelect').value = brushPreset;
+        this.updateBrushPreview();
+        this.updateStatusBar();
+    }
+
+    setBrushFlow(flowPercent) {
+        const normalized = Math.max(1, Math.min(100, Number(flowPercent) || 100));
+        brushFlow = normalized / 100;
+        document.getElementById('brushFlowSlider').value = normalized;
+        document.getElementById('brushFlowValue').textContent = `${normalized}%`;
+        this.updateBrushPreview();
+        this.updateStatusBar();
+    }
+
+    setBrushSpacing(spacingPercent) {
+        const normalized = Math.max(1, Math.min(100, Number(spacingPercent) || 25));
+        brushSpacing = normalized / 100;
+        document.getElementById('brushSpacingSlider').value = normalized;
+        document.getElementById('brushSpacingValue').textContent = `${normalized}%`;
+        this.updateStatusBar();
+    }
+
     setOpacity(opacity) {
         currentOpacity = opacity / 100;
         this.updateBrushPreview();
@@ -1123,22 +1216,10 @@ class WASRTK {
         this.applyImageSmoothing(ctx);
 
         // Draw brush preview
-        ctx.fillStyle = currentColor;
         ctx.globalAlpha = currentOpacity;
         const centerX = previewCanvas.width / 2;
         const centerY = previewCanvas.height / 2;
-        
-        if (brushSize === 1) {
-            ctx.fillRect(Math.round(centerX), Math.round(centerY), 1, 1);
-        } else if (brushShape === 'square') {
-            const size = Math.round(brushSize);
-            const offset = Math.floor(size / 2);
-            ctx.fillRect(Math.round(centerX) - offset, Math.round(centerY) - offset, size, size);
-        } else {
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, brushSize / 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        this.drawBrushStamp(ctx, centerX, centerY, { color: currentColor });
         
     }
 
@@ -1179,6 +1260,202 @@ class WASRTK {
         overlayCtx.restore();
     }
 
+    drawLassoPreview(points, currentPoint) {
+        this.clearOverlay();
+        if (!points || points.length === 0) {
+            return;
+        }
+
+        overlayCtx.save();
+        overlayCtx.strokeStyle = '#1f9eff';
+        overlayCtx.setLineDash([5, 3]);
+        overlayCtx.lineWidth = 1;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(points[0].x + 0.5, points[0].y + 0.5);
+        points.forEach((point, index) => {
+            if (index === 0) {
+                return;
+            }
+            overlayCtx.lineTo(point.x + 0.5, point.y + 0.5);
+        });
+        if (currentPoint) {
+            overlayCtx.lineTo(currentPoint.x + 0.5, currentPoint.y + 0.5);
+        }
+        overlayCtx.stroke();
+        overlayCtx.restore();
+    }
+
+    createLassoSelectionFromPoints(points) {
+        if (!points || points.length < 3) {
+            activeSelection = null;
+            this.clearOverlay();
+            return;
+        }
+
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+
+        const ctx = this.getLayerContext(layer);
+        const source = ctx.getImageData(0, 0, mainCanvas.width, mainCanvas.height);
+        const sourcePixels = source.data;
+
+        const xs = points.map((point) => Math.round(point.x));
+        const ys = points.map((point) => Math.round(point.y));
+        const minX = Math.max(0, Math.min(...xs));
+        const maxX = Math.min(mainCanvas.width - 1, Math.max(...xs));
+        const minY = Math.max(0, Math.min(...ys));
+        const maxY = Math.min(mainCanvas.height - 1, Math.max(...ys));
+
+        if (maxX <= minX || maxY <= minY) {
+            activeSelection = null;
+            this.clearOverlay();
+            return;
+        }
+
+        const width = (maxX - minX) + 1;
+        const height = (maxY - minY) + 1;
+        const selectedPixels = new Uint8ClampedArray(width * height * 4);
+
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = mainCanvas.width;
+        maskCanvas.height = mainCanvas.height;
+        const maskCtx = maskCanvas.getContext('2d');
+        const path = new Path2D();
+        path.moveTo(points[0].x, points[0].y);
+        points.slice(1).forEach((point) => path.lineTo(point.x, point.y));
+        path.closePath();
+
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                if (!maskCtx.isPointInPath(path, x + 0.5, y + 0.5)) {
+                    continue;
+                }
+
+                const sourcePos = (y * mainCanvas.width + x) * 4;
+                const localPos = ((y - minY) * width + (x - minX)) * 4;
+                selectedPixels[localPos] = sourcePixels[sourcePos];
+                selectedPixels[localPos + 1] = sourcePixels[sourcePos + 1];
+                selectedPixels[localPos + 2] = sourcePixels[sourcePos + 2];
+                selectedPixels[localPos + 3] = sourcePixels[sourcePos + 3];
+            }
+        }
+
+        activeSelection = {
+            x: minX,
+            y: minY,
+            width,
+            height,
+            imageData: new ImageData(selectedPixels, width, height),
+            originalX: minX,
+            originalY: minY,
+            detached: false,
+            sourceSnapshot: null
+        };
+
+        this.drawSelectionOutline(activeSelection);
+    }
+
+    createMagicWandSelection(coords) {
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+
+        const ctx = this.getLayerContext(layer);
+        const imageData = ctx.getImageData(0, 0, mainCanvas.width, mainCanvas.height);
+        const pixels = imageData.data;
+        const width = imageData.width;
+        const height = imageData.height;
+        const startX = Math.max(0, Math.min(width - 1, Math.round(coords.x)));
+        const startY = Math.max(0, Math.min(height - 1, Math.round(coords.y)));
+        const startPos = (startY * width + startX) * 4;
+
+        const startR = pixels[startPos];
+        const startG = pixels[startPos + 1];
+        const startB = pixels[startPos + 2];
+        const startA = pixels[startPos + 3];
+
+        const colorDistance = (pos) => {
+            const dr = pixels[pos] - startR;
+            const dg = pixels[pos + 1] - startG;
+            const db = pixels[pos + 2] - startB;
+            const da = pixels[pos + 3] - startA;
+            return Math.sqrt((dr * dr) + (dg * dg) + (db * db) + (da * da));
+        };
+
+        const visited = new Uint8Array(width * height);
+        const stack = [[startX, startY]];
+        const selected = [];
+        let minX = width;
+        let minY = height;
+        let maxX = 0;
+        let maxY = 0;
+
+        while (stack.length > 0) {
+            const [x, y] = stack.pop();
+            if (x < 0 || x >= width || y < 0 || y >= height) {
+                continue;
+            }
+
+            const idx = (y * width) + x;
+            if (visited[idx]) {
+                continue;
+            }
+            visited[idx] = 1;
+
+            const pos = idx * 4;
+            if (colorDistance(pos) > fillTolerance) {
+                continue;
+            }
+
+            selected.push({ x, y, pos });
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+
+            stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        }
+
+        if (selected.length === 0) {
+            activeSelection = null;
+            this.clearOverlay();
+            return;
+        }
+
+        const selectionWidth = (maxX - minX) + 1;
+        const selectionHeight = (maxY - minY) + 1;
+        const selectedPixels = new Uint8ClampedArray(selectionWidth * selectionHeight * 4);
+
+        selected.forEach(({ x, y, pos }) => {
+            const localX = x - minX;
+            const localY = y - minY;
+            const localPos = (localY * selectionWidth + localX) * 4;
+            selectedPixels[localPos] = pixels[pos];
+            selectedPixels[localPos + 1] = pixels[pos + 1];
+            selectedPixels[localPos + 2] = pixels[pos + 2];
+            selectedPixels[localPos + 3] = pixels[pos + 3];
+        });
+
+        activeSelection = {
+            x: minX,
+            y: minY,
+            width: selectionWidth,
+            height: selectionHeight,
+            imageData: new ImageData(selectedPixels, selectionWidth, selectionHeight),
+            originalX: minX,
+            originalY: minY,
+            detached: false,
+            sourceSnapshot: null
+        };
+
+        this.drawSelectionOutline(activeSelection);
+    }
+
     startSelectionInteraction(coords) {
         if (activeSelection &&
             coords.x >= activeSelection.x &&
@@ -1192,6 +1469,23 @@ class WASRTK {
                 originalX: activeSelection.x,
                 originalY: activeSelection.y
             };
+            return;
+        }
+
+        if (selectionMode === 'magic-wand') {
+            this.createMagicWandSelection(coords);
+            selectionInteraction = null;
+            return;
+        }
+
+        if (selectionMode === 'lasso') {
+            activeSelection = null;
+            selectionInteraction = {
+                mode: 'lasso',
+                points: [coords],
+                current: coords
+            };
+            this.drawLassoPreview(selectionInteraction.points, coords);
             return;
         }
 
@@ -1213,6 +1507,17 @@ class WASRTK {
             selectionInteraction.current = coords;
             const bounds = this.normalizeSelectionBounds(selectionInteraction.start, coords, { keepSquare });
             this.drawSelectionOutline(bounds);
+            return;
+        }
+
+        if (selectionInteraction.mode === 'lasso') {
+            const lastPoint = selectionInteraction.points[selectionInteraction.points.length - 1];
+            const distance = Math.hypot(coords.x - lastPoint.x, coords.y - lastPoint.y);
+            if (distance >= 1) {
+                selectionInteraction.points.push(coords);
+            }
+            selectionInteraction.current = coords;
+            this.drawLassoPreview(selectionInteraction.points, coords);
             return;
         }
 
@@ -1261,6 +1566,8 @@ class WASRTK {
                 };
                 this.drawSelectionOutline(activeSelection);
             }
+        } else if (selectionInteraction.mode === 'lasso') {
+            this.createLassoSelectionFromPoints(selectionInteraction.points || []);
         } else if (selectionInteraction.mode === 'move' && activeSelection) {
             this.drawSelectionOutline(activeSelection, { showPreview: true });
         }
@@ -1431,6 +1738,125 @@ class WASRTK {
         this.renderCurrentFrame();
     }
 
+    applyTransformAction({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
+        if (activeSelection) {
+            this.transformActiveSelection({ flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
+            return;
+        }
+
+        this.transformCurrentLayer({ flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
+    }
+
+    buildTransformedImageData(sourceImageData, { flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
+        const sourceCanvas = document.createElement('canvas');
+        sourceCanvas.width = sourceImageData.width;
+        sourceCanvas.height = sourceImageData.height;
+        const sourceCtx = sourceCanvas.getContext('2d');
+        sourceCtx.putImageData(sourceImageData, 0, 0);
+
+        const outputCanvas = document.createElement('canvas');
+        const swapAxes = Boolean(rotate90);
+        const baseWidth = swapAxes ? sourceCanvas.height : sourceCanvas.width;
+        const baseHeight = swapAxes ? sourceCanvas.width : sourceCanvas.height;
+        const scaledWidth = Math.max(1, Math.round(baseWidth * Math.abs(scaleX)));
+        const scaledHeight = Math.max(1, Math.round(baseHeight * Math.abs(scaleY)));
+        const skewPadX = Math.ceil(Math.abs(Math.tan(skewX)) * scaledHeight);
+        const skewPadY = Math.ceil(Math.abs(Math.tan(skewY)) * scaledWidth);
+        outputCanvas.width = Math.max(1, scaledWidth + skewPadX);
+        outputCanvas.height = Math.max(1, scaledHeight + skewPadY);
+        const outCtx = outputCanvas.getContext('2d');
+        this.applyImageSmoothing(outCtx);
+
+        outCtx.save();
+        outCtx.translate(outputCanvas.width / 2, outputCanvas.height / 2);
+        outCtx.transform(1, Math.tan(skewY), Math.tan(skewX), 1, 0, 0);
+        if (rotate90) {
+            outCtx.rotate(Math.PI / 2);
+        }
+        outCtx.scale((flipX ? -1 : 1) * scaleX, (flipY ? -1 : 1) * scaleY);
+        outCtx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+        outCtx.restore();
+
+        return outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    }
+
+    transformActiveSelection({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
+        if (!activeSelection) {
+            return;
+        }
+
+        if (!activeSelection.detached) {
+            this.detachSelectionFromLayer();
+        }
+
+        activeSelection.imageData = this.buildTransformedImageData(activeSelection.imageData, { flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
+        activeSelection.width = activeSelection.imageData.width;
+        activeSelection.height = activeSelection.imageData.height;
+
+        activeSelection.x = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.x));
+        activeSelection.y = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.y));
+        activeSelection.originalX = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.originalX));
+        activeSelection.originalY = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.originalY));
+
+        this.drawSelectionOutline(activeSelection, { showPreview: true });
+    }
+
+    transformCurrentLayer({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+
+        this.saveState();
+
+        const ctx = this.getLayerContext(layer);
+        const sourceImageData = ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+        const transformed = this.buildTransformedImageData(sourceImageData, { flipX, flipY, rotate90, scaleX, scaleY, skewX, skewY });
+
+        ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+
+        const offsetX = Math.max(0, Math.floor((layer.canvas.width - transformed.width) / 2));
+        const offsetY = Math.max(0, Math.floor((layer.canvas.height - transformed.height) / 2));
+        ctx.putImageData(transformed, offsetX, offsetY);
+
+        this.renderCurrentFrame();
+    }
+
+    getEventPressure(event) {
+        if (!pressureSensitivityEnabled) {
+            return 1;
+        }
+
+        if (!event) {
+            return 1;
+        }
+
+        if (typeof event.pressure === 'number' && event.pressure > 0) {
+            return Math.max(0.05, Math.min(1, event.pressure));
+        }
+
+        if (event.pointerType === 'mouse' || event.buttons) {
+            return 1;
+        }
+
+        return 1;
+    }
+
+    getPressureAdjustedBrushSize() {
+        if (!pressureSensitivityEnabled || !pressureAffectsSize) {
+            return brushSize;
+        }
+        return Math.max(1, brushSize * Math.max(0.1, currentInputPressure));
+    }
+
+    getPressureAdjustedFlow() {
+        if (!pressureSensitivityEnabled || !pressureAffectsFlow) {
+            return brushFlow;
+        }
+        return Math.max(0.02, brushFlow * Math.max(0.05, currentInputPressure));
+    }
+
     // Drawing methods
     startDrawing(e) {
         const tool = this.getCurrentToolConfig();
@@ -1440,6 +1866,7 @@ class WASRTK {
         }
 
         isDrawing = true;
+        currentInputPressure = this.getEventPressure(e);
         const coords = this.screenToCanvas(e.clientX, e.clientY);
         lastMousePos = coords; // Initialize last position
         this.startShape = coords; // For shape tools
@@ -1455,6 +1882,7 @@ class WASRTK {
 
     draw(e) {
         if (!isDrawing) return;
+        currentInputPressure = this.getEventPressure(e);
         const currentCoords = this.screenToCanvas(e.clientX, e.clientY);
         const tool = this.getCurrentToolConfig();
 
@@ -1475,6 +1903,7 @@ class WASRTK {
     stopDrawing(e) {
         if (!isDrawing) return;
         isDrawing = false;
+        currentInputPressure = 1;
         const tool = this.getCurrentToolConfig();
         tool?.onStop?.(this, {
             startShape: this.startShape,
@@ -1514,65 +1943,102 @@ class WASRTK {
     }
 
     floodFill(ctx, startX, startY, fillColor) {
-        const safeStartX = Math.max(0, Math.min(ctx.canvas.width - 1, Math.round(startX)));
-        const safeStartY = Math.max(0, Math.min(ctx.canvas.height - 1, Math.round(startY)));
+        const width = ctx.canvas.width;
+        const height = ctx.canvas.height;
+        const safeStartX = Math.max(0, Math.min(width - 1, Math.round(startX)));
+        const safeStartY = Math.max(0, Math.min(height - 1, Math.round(startY)));
 
         if (!Number.isFinite(safeStartX) || !Number.isFinite(safeStartY)) {
             return;
         }
 
-        const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-        const pixels = imageData.data;
-        
-        const startPos = (safeStartY * ctx.canvas.width + safeStartX) * 4;
-        const startR = pixels[startPos];
-        const startG = pixels[startPos + 1];
-        const startB = pixels[startPos + 2];
-        const startA = pixels[startPos + 3];
-        
+        const targetImageData = ctx.getImageData(0, 0, width, height);
+        const targetPixels = targetImageData.data;
+        const samplePixels = fillSampleAllLayers ? this.getMergedVisibleLayersImageData().data : targetPixels;
+
+        const startPos = (safeStartY * width + safeStartX) * 4;
+        const startR = samplePixels[startPos];
+        const startG = samplePixels[startPos + 1];
+        const startB = samplePixels[startPos + 2];
+
         const fillR = parseInt(fillColor.substr(1, 2), 16);
         const fillG = parseInt(fillColor.substr(3, 2), 16);
         const fillB = parseInt(fillColor.substr(5, 2), 16);
-        
-        if (startR === fillR && startG === fillG && startB === fillB) return;
-        
-        const colorDistance = (r1, g1, b1, r2, g2, b2) => {
-            return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
-        };
-        
-        const pixelsToFill = [];
-        
-        const stack = [[safeStartX, safeStartY]];
-        const visited = new Set();
-        
-        while (stack.length) {
-            const [x, y] = stack.pop();
-            const pos = (y * ctx.canvas.width + x) * 4;
-            
-            if (x < 0 || x >= ctx.canvas.width || y < 0 || y >= ctx.canvas.height) continue;
-            
-            const r = pixels[pos];
-            const g = pixels[pos + 1];
-            const b = pixels[pos + 2];
 
-            if (visited.has(pos) || colorDistance(r, g, b, startR, startG, startB) > fillTolerance) {
-                continue;
-            }
-
-            pixelsToFill.push(pos);
-            visited.add(pos);
-            
-            stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        if (!fillSampleAllLayers && startR === fillR && startG === fillG && startB === fillB) {
+            return;
         }
-        
-        pixelsToFill.forEach(pos => {
-            pixels[pos] = fillR;
-            pixels[pos + 1] = fillG;
-            pixels[pos + 2] = fillB;
-            pixels[pos + 3] = 255;
+
+        const colorDistance = (index) => {
+            const r = samplePixels[index];
+            const g = samplePixels[index + 1];
+            const b = samplePixels[index + 2];
+            return Math.sqrt(
+                Math.pow(r - startR, 2) +
+                Math.pow(g - startG, 2) +
+                Math.pow(b - startB, 2)
+            );
+        };
+
+        const pixelsToFill = [];
+
+        if (fillContiguous) {
+            const stack = [[safeStartX, safeStartY]];
+            const visited = new Set();
+
+            while (stack.length) {
+                const [x, y] = stack.pop();
+                if (x < 0 || x >= width || y < 0 || y >= height) {
+                    continue;
+                }
+
+                const pos = (y * width + x) * 4;
+                if (visited.has(pos)) {
+                    continue;
+                }
+
+                visited.add(pos);
+                if (colorDistance(pos) > fillTolerance) {
+                    continue;
+                }
+
+                pixelsToFill.push(pos);
+                stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+            }
+        } else {
+            for (let pos = 0; pos < samplePixels.length; pos += 4) {
+                if (colorDistance(pos) <= fillTolerance) {
+                    pixelsToFill.push(pos);
+                }
+            }
+        }
+
+        pixelsToFill.forEach((pos) => {
+            targetPixels[pos] = fillR;
+            targetPixels[pos + 1] = fillG;
+            targetPixels[pos + 2] = fillB;
+            targetPixels[pos + 3] = 255;
         });
-        
-        ctx.putImageData(imageData, 0, 0);
+
+        ctx.putImageData(targetImageData, 0, 0);
+    }
+
+    getMergedVisibleLayersImageData() {
+        const frame = frames[currentFrame];
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = mainCanvas.width;
+        tempCanvas.height = mainCanvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        this.applyImageSmoothing(tempCtx);
+
+        frame.layers.forEach((layer) => {
+            if (!layer.visible) {
+                return;
+            }
+            tempCtx.drawImage(layer.canvas, 0, 0);
+        });
+
+        return tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
     }
 
     drawLine(x1, y1, x2, y2, useStrokeCtx = false) {
@@ -1841,6 +2307,110 @@ class WASRTK {
                 }
             }
         }
+    }
+
+    drawBrushStamp(ctx, x, y, { color = currentColor } = {}) {
+        const usePixelPreset = brushPreset === 'pixel';
+        const shape = usePixelPreset ? 'square' : brushShape;
+        const size = Math.max(1, this.getPressureAdjustedBrushSize());
+        const isSquare = shape === 'square';
+        const originalAlpha = ctx.globalAlpha;
+        const baseAlpha = originalAlpha * this.getPressureAdjustedFlow();
+        ctx.globalAlpha = baseAlpha;
+
+        if (usePixelPreset || !antialiasingEnabled) {
+            ctx.fillStyle = color;
+            this.drawPixelPerfectBrushStamp(ctx, x, y, size, shape);
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        if (brushPreset === 'soft-round' && !isSquare) {
+            const radius = Math.max(0.5, size / 2);
+            const parsedColor = normalizeHexColor(color) || '#000000';
+            const rgb = {
+                r: parseInt(parsedColor.slice(1, 3), 16),
+                g: parseInt(parsedColor.slice(3, 5), 16),
+                b: parseInt(parsedColor.slice(5, 7), 16)
+            };
+            const gradient = ctx.createRadialGradient(x, y, radius * 0.05, x, y, radius);
+            gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`);
+            gradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        if (brushPreset === 'textured') {
+            ctx.fillStyle = color;
+            const scatterCount = Math.max(8, Math.round(size * 2));
+            for (let i = 0; i < scatterCount; i++) {
+                const angle = ((i * 97) % 360) * (Math.PI / 180);
+                const radius = (Math.sin((x + y + i) * 12.9898) * 0.5 + 0.5) * (size / 2);
+                const dotX = x + Math.cos(angle) * radius;
+                const dotY = y + Math.sin(angle) * radius;
+                const dotSize = Math.max(1, Math.round(size / 6));
+                ctx.globalAlpha = baseAlpha * (0.35 + ((i % 7) / 10));
+                ctx.fillRect(Math.round(dotX), Math.round(dotY), dotSize, dotSize);
+            }
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        ctx.fillStyle = color;
+        if (isSquare) {
+            const offset = size / 2;
+            ctx.fillRect(x - offset, y - offset, size, size);
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        if (size === 1) {
+            ctx.fillRect(x, y, 1, 1);
+            ctx.globalAlpha = originalAlpha;
+            return;
+        }
+
+        ctx.beginPath();
+        ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = originalAlpha;
+    }
+
+    drawBrushLine(ctx, x1, y1, x2, y2, { color = currentColor } = {}) {
+        const usePixelPreset = brushPreset === 'pixel';
+        const shape = usePixelPreset ? 'square' : brushShape;
+        const adjustedSize = this.getPressureAdjustedBrushSize();
+        const stampSpacing = Math.max(0.25, adjustedSize * brushSpacing);
+
+        if (usePixelPreset || !antialiasingEnabled) {
+            const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
+            ctx.fillStyle = color;
+            points.forEach(({ x, y }) => {
+                this.drawPixelPerfectBrushStamp(ctx, x, y, adjustedSize, shape);
+            });
+            return;
+        }
+
+        if (brushPreset === 'soft-round' || brushPreset === 'textured' || shape === 'square') {
+            const points = this.getInterpolatedStrokePoints(x1, y1, x2, y2, stampSpacing);
+            points.forEach(({ x, y }) => {
+                this.drawBrushStamp(ctx, x, y, { color });
+            });
+            return;
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = adjustedSize;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
     }
 
     drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
@@ -2410,7 +2980,10 @@ class WASRTK {
         
         document.getElementById('currentTool').textContent = toolNames[currentTool] || 'Unknown Tool';
         document.getElementById('currentColor').textContent = `Color: ${currentColor}`;
-        document.getElementById('brushSize').textContent = `Size: ${brushSize}px`;
+        const pressureStatus = pressureSensitivityEnabled
+            ? `pressure ${Math.round(currentInputPressure * 100)}%`
+            : 'pressure off';
+        document.getElementById('brushSize').textContent = `Size: ${brushSize}px (${brushPreset}, flow ${Math.round(brushFlow * 100)}%, spacing ${Math.round(brushSpacing * 100)}%, ${pressureStatus})`;
         document.getElementById('currentFrame').textContent = `Frame: ${currentFrame + 1}`;
         document.getElementById('totalFrames').textContent = `Total: ${frames.length}`;
         document.getElementById('canvasDimensions').textContent = `${mainCanvas.width}x${mainCanvas.height}`;
@@ -2722,6 +3295,15 @@ class WASRTK {
                     currentOpacity,
                     brushSize,
                     brushShape,
+                    brushPreset,
+                    brushFlow,
+                    brushSpacing,
+                    pressureSensitivityEnabled,
+                    pressureAffectsSize,
+                    pressureAffectsFlow,
+                    fillTolerance,
+                    fillContiguous,
+                    fillSampleAllLayers,
                     zoom
                 }
             });
@@ -2998,7 +3580,8 @@ class WASRTK {
             const size = Math.max(2, brushSize * zoom); // Ensure minimum 2px size for visibility
             brushPreview.style.width = size + 'px';
             brushPreview.style.height = size + 'px';
-            brushPreview.style.borderRadius = brushShape === 'square' ? '0' : '50%';
+            const squarePreview = brushPreset === 'pixel' || brushShape === 'square';
+            brushPreview.style.borderRadius = squarePreview ? '0' : '50%';
         }
         
         // Set the preview color based on tool
@@ -3105,6 +3688,15 @@ class WASRTK {
             currentOpacity = settings.currentOpacity;
             brushSize = settings.brushSize;
             brushShape = settings.brushShape;
+            brushPreset = settings.brushPreset;
+            brushFlow = settings.brushFlow;
+            brushSpacing = settings.brushSpacing;
+            pressureSensitivityEnabled = settings.pressureSensitivityEnabled;
+            pressureAffectsSize = settings.pressureAffectsSize;
+            pressureAffectsFlow = settings.pressureAffectsFlow;
+            fillTolerance = settings.fillTolerance;
+            fillContiguous = settings.fillContiguous;
+            fillSampleAllLayers = settings.fillSampleAllLayers;
             zoom = settings.zoom;
 
             this.updateAllCanvasSmoothing();
@@ -3128,6 +3720,18 @@ class WASRTK {
             document.getElementById('brushSizeSlider').value = brushSize;
             document.getElementById('brushSizeValue').textContent = brushSize + 'px';
             document.getElementById('brushShapeSelect').value = brushShape;
+            document.getElementById('brushPresetSelect').value = brushPreset;
+            document.getElementById('brushFlowSlider').value = Math.round(brushFlow * 100);
+            document.getElementById('brushFlowValue').textContent = `${Math.round(brushFlow * 100)}%`;
+            document.getElementById('brushSpacingSlider').value = Math.round(brushSpacing * 100);
+            document.getElementById('brushSpacingValue').textContent = `${Math.round(brushSpacing * 100)}%`;
+            document.getElementById('pressureSensitivityEnabled').checked = pressureSensitivityEnabled;
+            document.getElementById('pressureAffectsSize').checked = pressureAffectsSize;
+            document.getElementById('pressureAffectsFlow').checked = pressureAffectsFlow;
+            document.getElementById('fillToleranceSlider').value = fillTolerance;
+            document.getElementById('fillToleranceValue').textContent = fillTolerance;
+            document.getElementById('fillContiguous').checked = fillContiguous;
+            document.getElementById('fillSampleAllLayers').checked = fillSampleAllLayers;
             document.getElementById('opacitySlider').value = currentOpacity * 100;
             document.getElementById('opacityValue').textContent = Math.round(currentOpacity * 100) + '%';
 

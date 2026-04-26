@@ -125,6 +125,15 @@ function normalizeProjectSettings(settings = {}) {
     currentOpacity: settings.currentOpacity || 1.0,
     brushSize: settings.brushSize || 1,
     brushShape: settings.brushShape || 'circle',
+    brushPreset: settings.brushPreset || 'hard-round',
+    brushFlow: Number.isFinite(settings.brushFlow) ? settings.brushFlow : 1,
+    brushSpacing: Number.isFinite(settings.brushSpacing) ? settings.brushSpacing : 0.25,
+    pressureSensitivityEnabled: settings.pressureSensitivityEnabled !== undefined ? settings.pressureSensitivityEnabled : true,
+    pressureAffectsSize: settings.pressureAffectsSize !== undefined ? settings.pressureAffectsSize : true,
+    pressureAffectsFlow: settings.pressureAffectsFlow !== undefined ? settings.pressureAffectsFlow : true,
+    fillTolerance: Number.isFinite(settings.fillTolerance) ? settings.fillTolerance : 0,
+    fillContiguous: settings.fillContiguous !== undefined ? settings.fillContiguous : true,
+    fillSampleAllLayers: settings.fillSampleAllLayers || false,
     zoom: settings.zoom || 1
   };
 }
