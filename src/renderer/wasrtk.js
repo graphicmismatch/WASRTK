@@ -46,6 +46,7 @@ let selectedPalette = 'lospec-journey';
 let activeSelection = null;
 let selectionInteraction = null;
 let selectionClipboard = null;
+let selectionMode = 'rectangle';
 let penLastDrawnPoint = null;
 let penLineAnchor = null;
 
@@ -547,6 +548,9 @@ class WASRTK {
         document.getElementById('fillSampleAllLayers').addEventListener('change', (e) => {
             fillSampleAllLayers = e.target.checked;
         });
+        document.getElementById('selectionModeSelect').addEventListener('change', (e) => {
+            selectionMode = e.target.value === 'magic-wand' ? 'magic-wand' : 'rectangle';
+        });
 
         document.getElementById('brushShapeSelect').addEventListener('change', (e) => {
             this.setBrushShape(e.target.value);
@@ -979,6 +983,9 @@ class WASRTK {
             toleranceSection.style.display = 'none';
         }
 
+        const selectionModeSection = document.getElementById('selectionModeSection');
+        selectionModeSection.style.display = tool === 'selection' ? 'flex' : 'none';
+
         const brushShapeControl = document.querySelector('.brush-shape-control');
         const brushShapeTools = ['pen', 'line', 'eraser'];
         brushShapeControl.style.display = brushShapeTools.includes(tool) ? 'flex' : 'none';
@@ -1245,6 +1252,104 @@ class WASRTK {
         overlayCtx.restore();
     }
 
+    createMagicWandSelection(coords) {
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+
+        const ctx = this.getLayerContext(layer);
+        const imageData = ctx.getImageData(0, 0, mainCanvas.width, mainCanvas.height);
+        const pixels = imageData.data;
+        const width = imageData.width;
+        const height = imageData.height;
+        const startX = Math.max(0, Math.min(width - 1, Math.round(coords.x)));
+        const startY = Math.max(0, Math.min(height - 1, Math.round(coords.y)));
+        const startPos = (startY * width + startX) * 4;
+
+        const startR = pixels[startPos];
+        const startG = pixels[startPos + 1];
+        const startB = pixels[startPos + 2];
+        const startA = pixels[startPos + 3];
+
+        const colorDistance = (pos) => {
+            const dr = pixels[pos] - startR;
+            const dg = pixels[pos + 1] - startG;
+            const db = pixels[pos + 2] - startB;
+            const da = pixels[pos + 3] - startA;
+            return Math.sqrt((dr * dr) + (dg * dg) + (db * db) + (da * da));
+        };
+
+        const visited = new Uint8Array(width * height);
+        const stack = [[startX, startY]];
+        const selected = [];
+        let minX = width;
+        let minY = height;
+        let maxX = 0;
+        let maxY = 0;
+
+        while (stack.length > 0) {
+            const [x, y] = stack.pop();
+            if (x < 0 || x >= width || y < 0 || y >= height) {
+                continue;
+            }
+
+            const idx = (y * width) + x;
+            if (visited[idx]) {
+                continue;
+            }
+            visited[idx] = 1;
+
+            const pos = idx * 4;
+            if (colorDistance(pos) > fillTolerance) {
+                continue;
+            }
+
+            selected.push({ x, y, pos });
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+
+            stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        }
+
+        if (selected.length === 0) {
+            activeSelection = null;
+            this.clearOverlay();
+            return;
+        }
+
+        const selectionWidth = (maxX - minX) + 1;
+        const selectionHeight = (maxY - minY) + 1;
+        const selectedPixels = new Uint8ClampedArray(selectionWidth * selectionHeight * 4);
+
+        selected.forEach(({ x, y, pos }) => {
+            const localX = x - minX;
+            const localY = y - minY;
+            const localPos = (localY * selectionWidth + localX) * 4;
+            selectedPixels[localPos] = pixels[pos];
+            selectedPixels[localPos + 1] = pixels[pos + 1];
+            selectedPixels[localPos + 2] = pixels[pos + 2];
+            selectedPixels[localPos + 3] = pixels[pos + 3];
+        });
+
+        activeSelection = {
+            x: minX,
+            y: minY,
+            width: selectionWidth,
+            height: selectionHeight,
+            imageData: new ImageData(selectedPixels, selectionWidth, selectionHeight),
+            originalX: minX,
+            originalY: minY,
+            detached: false,
+            sourceSnapshot: null
+        };
+
+        this.drawSelectionOutline(activeSelection);
+    }
+
     startSelectionInteraction(coords) {
         if (activeSelection &&
             coords.x >= activeSelection.x &&
@@ -1258,6 +1363,12 @@ class WASRTK {
                 originalX: activeSelection.x,
                 originalY: activeSelection.y
             };
+            return;
+        }
+
+        if (selectionMode === 'magic-wand') {
+            this.createMagicWandSelection(coords);
+            selectionInteraction = null;
             return;
         }
 

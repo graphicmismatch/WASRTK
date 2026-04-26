@@ -389,6 +389,20 @@ body {
     cursor: pointer;
 }
 
+#selectionModeSection {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#selectionModeSection select {
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    border: 1px solid var(--bg-med);
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
 /* Buttons */
 .btn {
     padding: 8px 16px;
