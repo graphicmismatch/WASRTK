@@ -549,7 +549,11 @@ class WASRTK {
             fillSampleAllLayers = e.target.checked;
         });
         document.getElementById('selectionModeSelect').addEventListener('change', (e) => {
-            selectionMode = e.target.value === 'magic-wand' ? 'magic-wand' : 'rectangle';
+            if (e.target.value === 'magic-wand' || e.target.value === 'lasso') {
+                selectionMode = e.target.value;
+                return;
+            }
+            selectionMode = 'rectangle';
         });
 
         document.getElementById('brushShapeSelect').addEventListener('change', (e) => {
@@ -1256,6 +1260,104 @@ class WASRTK {
         overlayCtx.restore();
     }
 
+    drawLassoPreview(points, currentPoint) {
+        this.clearOverlay();
+        if (!points || points.length === 0) {
+            return;
+        }
+
+        overlayCtx.save();
+        overlayCtx.strokeStyle = '#1f9eff';
+        overlayCtx.setLineDash([5, 3]);
+        overlayCtx.lineWidth = 1;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(points[0].x + 0.5, points[0].y + 0.5);
+        points.forEach((point, index) => {
+            if (index === 0) {
+                return;
+            }
+            overlayCtx.lineTo(point.x + 0.5, point.y + 0.5);
+        });
+        if (currentPoint) {
+            overlayCtx.lineTo(currentPoint.x + 0.5, currentPoint.y + 0.5);
+        }
+        overlayCtx.stroke();
+        overlayCtx.restore();
+    }
+
+    createLassoSelectionFromPoints(points) {
+        if (!points || points.length < 3) {
+            activeSelection = null;
+            this.clearOverlay();
+            return;
+        }
+
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+
+        const ctx = this.getLayerContext(layer);
+        const source = ctx.getImageData(0, 0, mainCanvas.width, mainCanvas.height);
+        const sourcePixels = source.data;
+
+        const xs = points.map((point) => Math.round(point.x));
+        const ys = points.map((point) => Math.round(point.y));
+        const minX = Math.max(0, Math.min(...xs));
+        const maxX = Math.min(mainCanvas.width - 1, Math.max(...xs));
+        const minY = Math.max(0, Math.min(...ys));
+        const maxY = Math.min(mainCanvas.height - 1, Math.max(...ys));
+
+        if (maxX <= minX || maxY <= minY) {
+            activeSelection = null;
+            this.clearOverlay();
+            return;
+        }
+
+        const width = (maxX - minX) + 1;
+        const height = (maxY - minY) + 1;
+        const selectedPixels = new Uint8ClampedArray(width * height * 4);
+
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = mainCanvas.width;
+        maskCanvas.height = mainCanvas.height;
+        const maskCtx = maskCanvas.getContext('2d');
+        const path = new Path2D();
+        path.moveTo(points[0].x, points[0].y);
+        points.slice(1).forEach((point) => path.lineTo(point.x, point.y));
+        path.closePath();
+
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                if (!maskCtx.isPointInPath(path, x + 0.5, y + 0.5)) {
+                    continue;
+                }
+
+                const sourcePos = (y * mainCanvas.width + x) * 4;
+                const localPos = ((y - minY) * width + (x - minX)) * 4;
+                selectedPixels[localPos] = sourcePixels[sourcePos];
+                selectedPixels[localPos + 1] = sourcePixels[sourcePos + 1];
+                selectedPixels[localPos + 2] = sourcePixels[sourcePos + 2];
+                selectedPixels[localPos + 3] = sourcePixels[sourcePos + 3];
+            }
+        }
+
+        activeSelection = {
+            x: minX,
+            y: minY,
+            width,
+            height,
+            imageData: new ImageData(selectedPixels, width, height),
+            originalX: minX,
+            originalY: minY,
+            detached: false,
+            sourceSnapshot: null
+        };
+
+        this.drawSelectionOutline(activeSelection);
+    }
+
     createMagicWandSelection(coords) {
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
@@ -1376,6 +1478,17 @@ class WASRTK {
             return;
         }
 
+        if (selectionMode === 'lasso') {
+            activeSelection = null;
+            selectionInteraction = {
+                mode: 'lasso',
+                points: [coords],
+                current: coords
+            };
+            this.drawLassoPreview(selectionInteraction.points, coords);
+            return;
+        }
+
         activeSelection = null;
         selectionInteraction = {
             mode: 'select',
@@ -1394,6 +1507,17 @@ class WASRTK {
             selectionInteraction.current = coords;
             const bounds = this.normalizeSelectionBounds(selectionInteraction.start, coords, { keepSquare });
             this.drawSelectionOutline(bounds);
+            return;
+        }
+
+        if (selectionInteraction.mode === 'lasso') {
+            const lastPoint = selectionInteraction.points[selectionInteraction.points.length - 1];
+            const distance = Math.hypot(coords.x - lastPoint.x, coords.y - lastPoint.y);
+            if (distance >= 1) {
+                selectionInteraction.points.push(coords);
+            }
+            selectionInteraction.current = coords;
+            this.drawLassoPreview(selectionInteraction.points, coords);
             return;
         }
 
@@ -1442,6 +1566,8 @@ class WASRTK {
                 };
                 this.drawSelectionOutline(activeSelection);
             }
+        } else if (selectionInteraction.mode === 'lasso') {
+            this.createLassoSelectionFromPoints(selectionInteraction.points || []);
         } else if (selectionInteraction.mode === 'move' && activeSelection) {
             this.drawSelectionOutline(activeSelection, { showPreview: true });
         }

@@ -46,6 +46,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Add magic-wand selection mode (tolerance-based contiguous pickup) as the first advanced selection variant. **Done**
 - [x] Add quick scale transform actions (Scale + / Scale -) for active selections or current layer. **Done**
 - [x] Add quick skew transform actions (Skew X / Skew Y) for active selections or current layer. **Done**
+- [x] Add lasso selection mode for freehand region capture in the selection workflow. **Done**
 
 
 ## Fully fledged drawing app plan
