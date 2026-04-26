@@ -338,6 +338,13 @@ body {
     margin: 0;
 }
 
+.pressure-controls {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
 .antialiasing-control {
     margin-top: 10px;
     padding: 8px 0;

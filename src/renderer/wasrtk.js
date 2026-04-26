@@ -14,6 +14,10 @@ let brushShape = 'circle';
 let brushPreset = 'hard-round';
 let brushFlow = 1;
 let brushSpacing = 0.25;
+let pressureSensitivityEnabled = true;
+let pressureAffectsSize = true;
+let pressureAffectsFlow = true;
+let currentInputPressure = 1;
 let isDrawing = false;
 let currentFrame = 0;
 let currentLayer = 0;
@@ -556,6 +560,18 @@ class WASRTK {
         document.getElementById('brushSpacingSlider').addEventListener('input', (e) => {
             this.setBrushSpacing(parseInt(e.target.value, 10));
         });
+        document.getElementById('pressureSensitivityEnabled').addEventListener('change', (e) => {
+            pressureSensitivityEnabled = e.target.checked;
+            this.updateStatusBar();
+        });
+        document.getElementById('pressureAffectsSize').addEventListener('change', (e) => {
+            pressureAffectsSize = e.target.checked;
+            this.updateStatusBar();
+        });
+        document.getElementById('pressureAffectsFlow').addEventListener('change', (e) => {
+            pressureAffectsFlow = e.target.checked;
+            this.updateStatusBar();
+        });
 
         // Antialiasing toggle
         document.getElementById('antialiasingEnabled').addEventListener('change', (e) => {
@@ -971,6 +987,8 @@ class WASRTK {
         document.querySelectorAll('.brush-advanced-control').forEach((control) => {
             control.style.display = brushPresetTools.includes(tool) ? 'grid' : 'none';
         });
+        const pressureControls = document.querySelector('.pressure-controls');
+        pressureControls.style.display = brushPresetTools.includes(tool) ? 'flex' : 'none';
         
         // Hide brush preview if switching away from pen/eraser
         if (tool !== 'pen' && tool !== 'eraser') {
@@ -1476,6 +1494,40 @@ class WASRTK {
         this.renderCurrentFrame();
     }
 
+    getEventPressure(event) {
+        if (!pressureSensitivityEnabled) {
+            return 1;
+        }
+
+        if (!event) {
+            return 1;
+        }
+
+        if (typeof event.pressure === 'number' && event.pressure > 0) {
+            return Math.max(0.05, Math.min(1, event.pressure));
+        }
+
+        if (event.pointerType === 'mouse' || event.buttons) {
+            return 1;
+        }
+
+        return 1;
+    }
+
+    getPressureAdjustedBrushSize() {
+        if (!pressureSensitivityEnabled || !pressureAffectsSize) {
+            return brushSize;
+        }
+        return Math.max(1, brushSize * Math.max(0.1, currentInputPressure));
+    }
+
+    getPressureAdjustedFlow() {
+        if (!pressureSensitivityEnabled || !pressureAffectsFlow) {
+            return brushFlow;
+        }
+        return Math.max(0.02, brushFlow * Math.max(0.05, currentInputPressure));
+    }
+
     // Drawing methods
     startDrawing(e) {
         const tool = this.getCurrentToolConfig();
@@ -1485,6 +1537,7 @@ class WASRTK {
         }
 
         isDrawing = true;
+        currentInputPressure = this.getEventPressure(e);
         const coords = this.screenToCanvas(e.clientX, e.clientY);
         lastMousePos = coords; // Initialize last position
         this.startShape = coords; // For shape tools
@@ -1500,6 +1553,7 @@ class WASRTK {
 
     draw(e) {
         if (!isDrawing) return;
+        currentInputPressure = this.getEventPressure(e);
         const currentCoords = this.screenToCanvas(e.clientX, e.clientY);
         const tool = this.getCurrentToolConfig();
 
@@ -1520,6 +1574,7 @@ class WASRTK {
     stopDrawing(e) {
         if (!isDrawing) return;
         isDrawing = false;
+        currentInputPressure = 1;
         const tool = this.getCurrentToolConfig();
         tool?.onStop?.(this, {
             startShape: this.startShape,
@@ -1928,10 +1983,10 @@ class WASRTK {
     drawBrushStamp(ctx, x, y, { color = currentColor } = {}) {
         const usePixelPreset = brushPreset === 'pixel';
         const shape = usePixelPreset ? 'square' : brushShape;
-        const size = Math.max(1, brushSize);
+        const size = Math.max(1, this.getPressureAdjustedBrushSize());
         const isSquare = shape === 'square';
         const originalAlpha = ctx.globalAlpha;
-        const baseAlpha = originalAlpha * brushFlow;
+        const baseAlpha = originalAlpha * this.getPressureAdjustedFlow();
         ctx.globalAlpha = baseAlpha;
 
         if (usePixelPreset || !antialiasingEnabled) {
@@ -1980,11 +2035,13 @@ class WASRTK {
         if (isSquare) {
             const offset = size / 2;
             ctx.fillRect(x - offset, y - offset, size, size);
+            ctx.globalAlpha = originalAlpha;
             return;
         }
 
         if (size === 1) {
             ctx.fillRect(x, y, 1, 1);
+            ctx.globalAlpha = originalAlpha;
             return;
         }
 
@@ -1997,13 +2054,14 @@ class WASRTK {
     drawBrushLine(ctx, x1, y1, x2, y2, { color = currentColor } = {}) {
         const usePixelPreset = brushPreset === 'pixel';
         const shape = usePixelPreset ? 'square' : brushShape;
-        const stampSpacing = Math.max(0.25, brushSize * brushSpacing);
+        const adjustedSize = this.getPressureAdjustedBrushSize();
+        const stampSpacing = Math.max(0.25, adjustedSize * brushSpacing);
 
         if (usePixelPreset || !antialiasingEnabled) {
             const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
             ctx.fillStyle = color;
             points.forEach(({ x, y }) => {
-                this.drawPixelPerfectBrushStamp(ctx, x, y, brushSize, shape);
+                this.drawPixelPerfectBrushStamp(ctx, x, y, adjustedSize, shape);
             });
             return;
         }
@@ -2017,7 +2075,7 @@ class WASRTK {
         }
 
         ctx.strokeStyle = color;
-        ctx.lineWidth = brushSize;
+        ctx.lineWidth = adjustedSize;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
@@ -2593,7 +2651,10 @@ class WASRTK {
         
         document.getElementById('currentTool').textContent = toolNames[currentTool] || 'Unknown Tool';
         document.getElementById('currentColor').textContent = `Color: ${currentColor}`;
-        document.getElementById('brushSize').textContent = `Size: ${brushSize}px (${brushPreset}, flow ${Math.round(brushFlow * 100)}%, spacing ${Math.round(brushSpacing * 100)}%)`;
+        const pressureStatus = pressureSensitivityEnabled
+            ? `pressure ${Math.round(currentInputPressure * 100)}%`
+            : 'pressure off';
+        document.getElementById('brushSize').textContent = `Size: ${brushSize}px (${brushPreset}, flow ${Math.round(brushFlow * 100)}%, spacing ${Math.round(brushSpacing * 100)}%, ${pressureStatus})`;
         document.getElementById('currentFrame').textContent = `Frame: ${currentFrame + 1}`;
         document.getElementById('totalFrames').textContent = `Total: ${frames.length}`;
         document.getElementById('canvasDimensions').textContent = `${mainCanvas.width}x${mainCanvas.height}`;
@@ -2908,6 +2969,9 @@ class WASRTK {
                     brushPreset,
                     brushFlow,
                     brushSpacing,
+                    pressureSensitivityEnabled,
+                    pressureAffectsSize,
+                    pressureAffectsFlow,
                     fillTolerance,
                     fillContiguous,
                     fillSampleAllLayers,
@@ -3298,6 +3362,9 @@ class WASRTK {
             brushPreset = settings.brushPreset;
             brushFlow = settings.brushFlow;
             brushSpacing = settings.brushSpacing;
+            pressureSensitivityEnabled = settings.pressureSensitivityEnabled;
+            pressureAffectsSize = settings.pressureAffectsSize;
+            pressureAffectsFlow = settings.pressureAffectsFlow;
             fillTolerance = settings.fillTolerance;
             fillContiguous = settings.fillContiguous;
             fillSampleAllLayers = settings.fillSampleAllLayers;
@@ -3329,6 +3396,9 @@ class WASRTK {
             document.getElementById('brushFlowValue').textContent = `${Math.round(brushFlow * 100)}%`;
             document.getElementById('brushSpacingSlider').value = Math.round(brushSpacing * 100);
             document.getElementById('brushSpacingValue').textContent = `${Math.round(brushSpacing * 100)}%`;
+            document.getElementById('pressureSensitivityEnabled').checked = pressureSensitivityEnabled;
+            document.getElementById('pressureAffectsSize').checked = pressureAffectsSize;
+            document.getElementById('pressureAffectsFlow').checked = pressureAffectsFlow;
             document.getElementById('fillToleranceSlider').value = fillTolerance;
             document.getElementById('fillToleranceValue').textContent = fillTolerance;
             document.getElementById('fillContiguous').checked = fillContiguous;

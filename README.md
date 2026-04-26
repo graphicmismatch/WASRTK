@@ -41,6 +41,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Start Phase 1 implementation by expanding fill controls with contiguous toggle and sample-all-layers behavior. **Done**
 - [x] Add initial brush engine presets (hard round, soft round, pixel, textured) with live preset switching. **Done**
 - [x] Add brush flow and spacing controls wired into the brush engine for pen/eraser presets. **Done**
+- [x] Add pressure sensitivity controls for brush size/flow response on tablet-compatible pointer input. **Done**
 
 
 ## Fully fledged drawing app plan
@@ -50,7 +51,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 ### Phase 1 — Core drawing power
 
 - [x] Add brush engine presets (hard/soft round, textured, pixel) with size, opacity, flow, spacing, and smoothing controls. **Done**
-- [ ] Add pressure sensitivity support (size/opacity/flow) for drawing tablets.
+- [x] Add pressure sensitivity support (size/opacity/flow) for drawing tablets. **Done**
 - [ ] Add non-destructive transform tools (scale, rotate, skew, flip) for selections and full layers.
 - [ ] Add lasso/polygon/magic-wand selection modes with anti-alias and feather options.
 - [x] Add advanced fill controls (tolerance slider, contiguous toggle, sample-all-layers). **Done**
