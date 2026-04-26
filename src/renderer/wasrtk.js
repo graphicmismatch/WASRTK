@@ -748,6 +748,8 @@ class WASRTK {
         document.getElementById('flipHorizontalBtn').addEventListener('click', () => this.applyTransformAction({ flipX: true }));
         document.getElementById('flipVerticalBtn').addEventListener('click', () => this.applyTransformAction({ flipY: true }));
         document.getElementById('rotate90Btn').addEventListener('click', () => this.applyTransformAction({ rotate90: true }));
+        document.getElementById('scaleUpBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 1.25, scaleY: 1.25 }));
+        document.getElementById('scaleDownBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 0.8, scaleY: 0.8 }));
 
         // Onion skinning
         document.getElementById('onionSkinningEnabled').addEventListener('change', (e) => {
@@ -1608,16 +1610,16 @@ class WASRTK {
         this.renderCurrentFrame();
     }
 
-    applyTransformAction({ flipX = false, flipY = false, rotate90 = false } = {}) {
+    applyTransformAction({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
         if (activeSelection) {
-            this.transformActiveSelection({ flipX, flipY, rotate90 });
+            this.transformActiveSelection({ flipX, flipY, rotate90, scaleX, scaleY });
             return;
         }
 
-        this.transformCurrentLayer({ flipX, flipY, rotate90 });
+        this.transformCurrentLayer({ flipX, flipY, rotate90, scaleX, scaleY });
     }
 
-    buildTransformedImageData(sourceImageData, { flipX = false, flipY = false, rotate90 = false } = {}) {
+    buildTransformedImageData(sourceImageData, { flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
         const sourceCanvas = document.createElement('canvas');
         sourceCanvas.width = sourceImageData.width;
         sourceCanvas.height = sourceImageData.height;
@@ -1626,8 +1628,10 @@ class WASRTK {
 
         const outputCanvas = document.createElement('canvas');
         const swapAxes = Boolean(rotate90);
-        outputCanvas.width = swapAxes ? sourceCanvas.height : sourceCanvas.width;
-        outputCanvas.height = swapAxes ? sourceCanvas.width : sourceCanvas.height;
+        const baseWidth = swapAxes ? sourceCanvas.height : sourceCanvas.width;
+        const baseHeight = swapAxes ? sourceCanvas.width : sourceCanvas.height;
+        outputCanvas.width = Math.max(1, Math.round(baseWidth * Math.abs(scaleX)));
+        outputCanvas.height = Math.max(1, Math.round(baseHeight * Math.abs(scaleY)));
         const outCtx = outputCanvas.getContext('2d');
         this.applyImageSmoothing(outCtx);
 
@@ -1636,14 +1640,14 @@ class WASRTK {
         if (rotate90) {
             outCtx.rotate(Math.PI / 2);
         }
-        outCtx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+        outCtx.scale((flipX ? -1 : 1) * scaleX, (flipY ? -1 : 1) * scaleY);
         outCtx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
         outCtx.restore();
 
         return outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
     }
 
-    transformActiveSelection({ flipX = false, flipY = false, rotate90 = false } = {}) {
+    transformActiveSelection({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
         if (!activeSelection) {
             return;
         }
@@ -1652,7 +1656,7 @@ class WASRTK {
             this.detachSelectionFromLayer();
         }
 
-        activeSelection.imageData = this.buildTransformedImageData(activeSelection.imageData, { flipX, flipY, rotate90 });
+        activeSelection.imageData = this.buildTransformedImageData(activeSelection.imageData, { flipX, flipY, rotate90, scaleX, scaleY });
         activeSelection.width = activeSelection.imageData.width;
         activeSelection.height = activeSelection.imageData.height;
 
@@ -1664,7 +1668,7 @@ class WASRTK {
         this.drawSelectionOutline(activeSelection, { showPreview: true });
     }
 
-    transformCurrentLayer({ flipX = false, flipY = false, rotate90 = false } = {}) {
+    transformCurrentLayer({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1 } = {}) {
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
         if (!layer || layer.locked) {
@@ -1675,7 +1679,7 @@ class WASRTK {
 
         const ctx = this.getLayerContext(layer);
         const sourceImageData = ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-        const transformed = this.buildTransformedImageData(sourceImageData, { flipX, flipY, rotate90 });
+        const transformed = this.buildTransformedImageData(sourceImageData, { flipX, flipY, rotate90, scaleX, scaleY });
 
         ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
 
