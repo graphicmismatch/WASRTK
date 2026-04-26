@@ -46,63 +46,10 @@ module.exports = {
   },
   drawPoint(app, { ctx, coords }) {
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = app.getCurrentColor();
-
-    const isSquareBrush = app.getBrushShape() === 'square';
-
-    if (!app.isAntialiasingEnabled()) {
-      app.drawPixelPerfectBrushStamp(ctx, coords.x, coords.y, app.getBrushSize(), app.getBrushShape());
-      return;
-    }
-
-    if (isSquareBrush) {
-      const size = app.getBrushSize();
-      const offset = size / 2;
-      ctx.fillRect(coords.x - offset, coords.y - offset, size, size);
-      return;
-    }
-
-    if (app.getBrushSize() === 1) {
-      ctx.fillRect(coords.x, coords.y, 1, 1);
-      return;
-    }
-
-    ctx.beginPath();
-    ctx.arc(coords.x, coords.y, app.getBrushSize() / 2, 0, Math.PI * 2);
-    ctx.fill();
+    app.drawBrushStamp(ctx, coords.x, coords.y, { color: app.getCurrentColor() });
   },
   drawLine(app, { ctx, x1, y1, x2, y2 }) {
     ctx.globalCompositeOperation = 'source-over';
-
-    const isSquareBrush = app.getBrushShape() === 'square';
-
-    if (!app.isAntialiasingEnabled()) {
-      const points = app.getPixelPerfectLinePoints(x1, y1, x2, y2);
-
-      points.forEach(({ x, y }) => {
-        app.drawPixelPerfectBrushStamp(ctx, x, y, app.getBrushSize(), app.getBrushShape());
-      });
-      return;
-    }
-
-    if (isSquareBrush) {
-      const size = app.getBrushSize();
-      const offset = size / 2;
-      const points = app.getInterpolatedStrokePoints(x1, y1, x2, y2, Math.max(0.5, size / 4));
-
-      points.forEach(({ x, y }) => {
-        ctx.fillRect(x - offset, y - offset, size, size);
-      });
-      return;
-    }
-
-    ctx.strokeStyle = app.getCurrentColor();
-    ctx.lineWidth = app.getBrushSize();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
+    app.drawBrushLine(ctx, x1, y1, x2, y2, { color: app.getCurrentColor() });
   }
 };
