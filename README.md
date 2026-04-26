@@ -42,6 +42,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Add initial brush engine presets (hard round, soft round, pixel, textured) with live preset switching. **Done**
 - [x] Add brush flow and spacing controls wired into the brush engine for pen/eraser presets. **Done**
 - [x] Add pressure sensitivity controls for brush size/flow response on tablet-compatible pointer input. **Done**
+- [x] Add initial transform actions (flip horizontal/vertical and rotate 90°) for active selections or current layer. **Done**
 
 
 ## Fully fledged drawing app plan

@@ -741,6 +741,9 @@ class WASRTK {
         document.getElementById('moveLayerUpBtn').addEventListener('click', () => this.moveLayerUp());
         document.getElementById('moveLayerDownBtn').addEventListener('click', () => this.moveLayerDown());
         document.getElementById('flattenLayerBtn').addEventListener('click', () => this.flattenLayer());
+        document.getElementById('flipHorizontalBtn').addEventListener('click', () => this.applyTransformAction({ flipX: true }));
+        document.getElementById('flipVerticalBtn').addEventListener('click', () => this.applyTransformAction({ flipY: true }));
+        document.getElementById('rotate90Btn').addEventListener('click', () => this.applyTransformAction({ rotate90: true }));
 
         // Onion skinning
         document.getElementById('onionSkinningEnabled').addEventListener('change', (e) => {
@@ -1491,6 +1494,84 @@ class WASRTK {
             originalY: pasteY
         };
         this.drawSelectionOutline(activeSelection);
+        this.renderCurrentFrame();
+    }
+
+    applyTransformAction({ flipX = false, flipY = false, rotate90 = false } = {}) {
+        if (activeSelection) {
+            this.transformActiveSelection({ flipX, flipY, rotate90 });
+            return;
+        }
+
+        this.transformCurrentLayer({ flipX, flipY, rotate90 });
+    }
+
+    buildTransformedImageData(sourceImageData, { flipX = false, flipY = false, rotate90 = false } = {}) {
+        const sourceCanvas = document.createElement('canvas');
+        sourceCanvas.width = sourceImageData.width;
+        sourceCanvas.height = sourceImageData.height;
+        const sourceCtx = sourceCanvas.getContext('2d');
+        sourceCtx.putImageData(sourceImageData, 0, 0);
+
+        const outputCanvas = document.createElement('canvas');
+        const swapAxes = Boolean(rotate90);
+        outputCanvas.width = swapAxes ? sourceCanvas.height : sourceCanvas.width;
+        outputCanvas.height = swapAxes ? sourceCanvas.width : sourceCanvas.height;
+        const outCtx = outputCanvas.getContext('2d');
+        this.applyImageSmoothing(outCtx);
+
+        outCtx.save();
+        outCtx.translate(outputCanvas.width / 2, outputCanvas.height / 2);
+        if (rotate90) {
+            outCtx.rotate(Math.PI / 2);
+        }
+        outCtx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+        outCtx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+        outCtx.restore();
+
+        return outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    }
+
+    transformActiveSelection({ flipX = false, flipY = false, rotate90 = false } = {}) {
+        if (!activeSelection) {
+            return;
+        }
+
+        if (!activeSelection.detached) {
+            this.detachSelectionFromLayer();
+        }
+
+        activeSelection.imageData = this.buildTransformedImageData(activeSelection.imageData, { flipX, flipY, rotate90 });
+        activeSelection.width = activeSelection.imageData.width;
+        activeSelection.height = activeSelection.imageData.height;
+
+        activeSelection.x = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.x));
+        activeSelection.y = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.y));
+        activeSelection.originalX = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.originalX));
+        activeSelection.originalY = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.originalY));
+
+        this.drawSelectionOutline(activeSelection, { showPreview: true });
+    }
+
+    transformCurrentLayer({ flipX = false, flipY = false, rotate90 = false } = {}) {
+        const frame = frames[currentFrame];
+        const layer = frame.layers[currentLayer];
+        if (!layer || layer.locked) {
+            return;
+        }
+
+        this.saveState();
+
+        const ctx = this.getLayerContext(layer);
+        const sourceImageData = ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+        const transformed = this.buildTransformedImageData(sourceImageData, { flipX, flipY, rotate90 });
+
+        ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+
+        const offsetX = Math.max(0, Math.floor((layer.canvas.width - transformed.width) / 2));
+        const offsetY = Math.max(0, Math.floor((layer.canvas.height - transformed.height) / 2));
+        ctx.putImageData(transformed, offsetX, offsetY);
+
         this.renderCurrentFrame();
     }
 

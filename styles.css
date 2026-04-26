@@ -680,6 +680,19 @@ body {
     margin-bottom: 10px;
 }
 
+.transform-controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.transform-controls .btn {
+    justify-content: center;
+    font-size: 12px;
+    padding: 6px 8px;
+}
+
 .layer-list {
     display: flex;
     flex-direction: column;
