@@ -2082,12 +2082,18 @@ class WASRTK {
         const startR = samplePixels[startPos];
         const startG = samplePixels[startPos + 1];
         const startB = samplePixels[startPos + 2];
+        const startA = samplePixels[startPos + 3];
 
         const fillR = parseInt(fillColor.substr(1, 2), 16);
         const fillG = parseInt(fillColor.substr(3, 2), 16);
         const fillB = parseInt(fillColor.substr(5, 2), 16);
+        const fillA = Math.max(0, Math.min(255, Math.round(currentOpacity * 255)));
 
-        if (!fillSampleAllLayers && startR === fillR && startG === fillG && startB === fillB) {
+        if (!fillSampleAllLayers &&
+            startR === fillR &&
+            startG === fillG &&
+            startB === fillB &&
+            startA === fillA) {
             return;
         }
 
@@ -2095,10 +2101,12 @@ class WASRTK {
             const r = samplePixels[index];
             const g = samplePixels[index + 1];
             const b = samplePixels[index + 2];
+            const a = samplePixels[index + 3];
             return Math.sqrt(
                 Math.pow(r - startR, 2) +
                 Math.pow(g - startG, 2) +
-                Math.pow(b - startB, 2)
+                Math.pow(b - startB, 2) +
+                Math.pow(a - startA, 2)
             );
         };
 
@@ -2139,7 +2147,7 @@ class WASRTK {
             targetPixels[pos] = fillR;
             targetPixels[pos + 1] = fillG;
             targetPixels[pos + 2] = fillB;
-            targetPixels[pos + 3] = 255;
+            targetPixels[pos + 3] = fillA;
         });
 
         ctx.putImageData(targetImageData, 0, 0);
