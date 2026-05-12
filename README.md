@@ -62,7 +62,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 
 - [x] Add brush engine presets (hard/soft round, textured, pixel) with size, opacity, flow, spacing, and smoothing controls. **Done**
 - [x] Add pressure sensitivity support (size/opacity/flow) for drawing tablets. **Done**
-- [x] Add non-destructive transform tools (scale, rotate, skew, flip) for selections and full layers. **Done**
+- [x] Add undoable transform tools (scale, rotate, skew, flip) for selections and full layers. **Done**
 - [x] Add lasso/polygon/magic-wand selection modes with anti-alias and feather options. **Done**
 - [x] Add advanced fill controls (tolerance slider, contiguous toggle, sample-all-layers). **Done**
 

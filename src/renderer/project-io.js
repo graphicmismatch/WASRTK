@@ -112,32 +112,40 @@ async function buildFramesFromProject({
   return builtFrames;
 }
 
+function clampNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, number));
+}
+
 function normalizeProjectSettings(settings = {}) {
   return {
-    fps: settings.fps || 12,
+    fps: Math.round(clampNumber(settings.fps, 12, 1, 60)),
     onionSkinningEnabled: settings.onionSkinningEnabled || false,
-    onionSkinningRange: settings.onionSkinningRange || 3,
-    referenceOpacity: settings.referenceOpacity || 0.5,
+    onionSkinningRange: Math.round(clampNumber(settings.onionSkinningRange, 3, 1, 10)),
+    referenceOpacity: clampNumber(settings.referenceOpacity, 0.5, 0, 1),
     referenceVisible: settings.referenceVisible || false,
     antialiasingEnabled: settings.antialiasingEnabled !== undefined ? settings.antialiasingEnabled : true,
     currentTool: settings.currentTool || 'pen',
     currentColor: settings.currentColor || '#000000',
-    currentOpacity: settings.currentOpacity || 1.0,
-    brushSize: settings.brushSize || 1,
-    brushShape: settings.brushShape || 'circle',
-    brushPreset: settings.brushPreset || 'hard-round',
-    brushFlow: Number.isFinite(settings.brushFlow) ? settings.brushFlow : 1,
-    brushSpacing: Number.isFinite(settings.brushSpacing) ? settings.brushSpacing : 0.25,
+    currentOpacity: clampNumber(settings.currentOpacity, 1, 0, 1),
+    brushSize: Math.round(clampNumber(settings.brushSize, 1, 1, 100)),
+    brushShape: settings.brushShape === 'square' ? 'square' : 'circle',
+    brushPreset: ['hard-round', 'soft-round', 'pixel', 'textured'].includes(settings.brushPreset) ? settings.brushPreset : 'hard-round',
+    brushFlow: clampNumber(settings.brushFlow, 1, 0.01, 1),
+    brushSpacing: clampNumber(settings.brushSpacing, 0.25, 0.01, 1),
     pressureSensitivityEnabled: settings.pressureSensitivityEnabled !== undefined ? settings.pressureSensitivityEnabled : true,
     pressureAffectsSize: settings.pressureAffectsSize !== undefined ? settings.pressureAffectsSize : true,
     pressureAffectsFlow: settings.pressureAffectsFlow !== undefined ? settings.pressureAffectsFlow : true,
     selectionMode: ['rectangle', 'magic-wand', 'lasso', 'polygon'].includes(settings.selectionMode) ? settings.selectionMode : 'rectangle',
     selectionAntialias: settings.selectionAntialias !== undefined ? settings.selectionAntialias : true,
-    selectionFeather: Number.isFinite(settings.selectionFeather) ? Math.max(0, Math.min(10, settings.selectionFeather)) : 0,
-    fillTolerance: Number.isFinite(settings.fillTolerance) ? settings.fillTolerance : 0,
+    selectionFeather: Math.round(clampNumber(settings.selectionFeather, 0, 0, 10)),
+    fillTolerance: Math.round(clampNumber(settings.fillTolerance, 0, 0, 255)),
     fillContiguous: settings.fillContiguous !== undefined ? settings.fillContiguous : true,
     fillSampleAllLayers: settings.fillSampleAllLayers || false,
-    zoom: settings.zoom || 1
+    zoom: clampNumber(settings.zoom, 1, 0.1, 20)
   };
 }
 

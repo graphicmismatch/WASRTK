@@ -51,6 +51,7 @@ let selectionAntialias = true;
 let selectionFeather = 0;
 let penLastDrawnPoint = null;
 let penLineAnchor = null;
+let currentStrokeSeed = 0;
 
 // Panning state
 let isPanning = false;
@@ -59,6 +60,7 @@ let panStartScroll = { left: 0, top: 0 };
 
 // Project settings
 let hasTransparentBackground = false; // Track if project has transparent background
+let projectBackgroundColor = '#ffffff';
 
 // Canvas elements
 const mainCanvas = document.getElementById('mainCanvas');
@@ -397,7 +399,7 @@ class WASRTK {
             layerCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
         } else {
             // Set solid background color
-            layerCtx.fillStyle = '#ffffff';
+            layerCtx.fillStyle = projectBackgroundColor;
             layerCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
         }
 
@@ -553,9 +555,11 @@ class WASRTK {
         document.getElementById('selectionModeSelect').addEventListener('change', (e) => {
             if (e.target.value === 'magic-wand' || e.target.value === 'lasso' || e.target.value === 'polygon') {
                 selectionMode = e.target.value;
-                return;
+            } else {
+                selectionMode = 'rectangle';
             }
-            selectionMode = 'rectangle';
+            this.updateSelectionHint();
+            this.selectTool(currentTool);
         });
         document.getElementById('selectionAntialias').addEventListener('change', (e) => {
             selectionAntialias = e.target.checked;
@@ -600,7 +604,12 @@ class WASRTK {
         });
 
         // Canvas events
-        mainCanvas.addEventListener('mousedown', (e) => {
+        const downEventName = window.PointerEvent ? 'pointerdown' : 'mousedown';
+        const moveEventName = window.PointerEvent ? 'pointermove' : 'mousemove';
+        const upEventName = window.PointerEvent ? 'pointerup' : 'mouseup';
+        const leaveEventName = window.PointerEvent ? 'pointerleave' : 'mouseleave';
+
+        mainCanvas.addEventListener(downEventName, (e) => {
             // Only respond to left mouse button (button 0)
             if (e.button !== 0) return;
             
@@ -621,6 +630,7 @@ class WASRTK {
                 }
             }
             
+            mainCanvas.setPointerCapture?.(e.pointerId);
             this.startDrawing(e);
         });
         
@@ -645,8 +655,8 @@ class WASRTK {
             this.draw(e);
         };
 
-        mainCanvas.addEventListener('mousemove', handleCanvasInteractionMove);
-        document.addEventListener('mousemove', (e) => {
+        mainCanvas.addEventListener(moveEventName, handleCanvasInteractionMove);
+        document.addEventListener(moveEventName, (e) => {
             if (!isDrawing && !isDraggingReference) {
                 return;
             }
@@ -658,17 +668,18 @@ class WASRTK {
             handleCanvasInteractionMove(e);
         });
         
-        mainCanvas.addEventListener('mouseup', (e) => {
+        mainCanvas.addEventListener(upEventName, (e) => {
             if (isDraggingReference) {
                 isDraggingReference = false;
                 lastMousePos = null;
                 document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
                 return;
             }
+            mainCanvas.releasePointerCapture?.(e.pointerId);
             this.stopDrawing(e);
         });
 
-        document.addEventListener('mouseup', (e) => {
+        document.addEventListener(upEventName, (e) => {
             if (e.button !== 0) {
                 return;
             }
@@ -684,10 +695,11 @@ class WASRTK {
                 return;
             }
 
+            mainCanvas.releasePointerCapture?.(e.pointerId);
             this.stopDrawing(e);
         });
         
-        mainCanvas.addEventListener('mouseleave', (e) => {
+        mainCanvas.addEventListener(leaveEventName, (e) => {
             if (isDraggingReference) {
                 isDraggingReference = false;
                 lastMousePos = null;
@@ -697,7 +709,7 @@ class WASRTK {
         });
 
         // Mouse position tracking
-        mainCanvas.addEventListener('mousemove', (e) => {
+        mainCanvas.addEventListener(moveEventName, (e) => {
             const pixelCoords = this.screenToCanvas(e.clientX, e.clientY);
             document.getElementById('mousePosition').textContent = `${pixelCoords.x}, ${pixelCoords.y}`;
             this.updateBrushSizePreview(e.clientX, e.clientY);
@@ -705,7 +717,7 @@ class WASRTK {
         });
 
         // Hide brush preview when mouse leaves canvas
-        mainCanvas.addEventListener('mouseleave', () => {
+        mainCanvas.addEventListener(leaveEventName, () => {
             this.hideBrushSizePreview();
             this.hideEyedropperZoomPreview();
         });
@@ -759,13 +771,7 @@ class WASRTK {
         document.getElementById('moveLayerUpBtn').addEventListener('click', () => this.moveLayerUp());
         document.getElementById('moveLayerDownBtn').addEventListener('click', () => this.moveLayerDown());
         document.getElementById('flattenLayerBtn').addEventListener('click', () => this.flattenLayer());
-        document.getElementById('flipHorizontalBtn').addEventListener('click', () => this.applyTransformAction({ flipX: true }));
-        document.getElementById('flipVerticalBtn').addEventListener('click', () => this.applyTransformAction({ flipY: true }));
-        document.getElementById('rotate90Btn').addEventListener('click', () => this.applyTransformAction({ rotate90: true }));
-        document.getElementById('scaleUpBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 1.25, scaleY: 1.25 }));
-        document.getElementById('scaleDownBtn').addEventListener('click', () => this.applyTransformAction({ scaleX: 0.8, scaleY: 0.8 }));
-        document.getElementById('skewXBtn').addEventListener('click', () => this.applyTransformAction({ skewX: 12 * (Math.PI / 180) }));
-        document.getElementById('skewYBtn').addEventListener('click', () => this.applyTransformAction({ skewY: 12 * (Math.PI / 180) }));
+        document.getElementById('applyTransformBtn').addEventListener('click', () => this.applySelectedTransformAction());
 
         // Onion skinning
         document.getElementById('onionSkinningEnabled').addEventListener('change', (e) => {
@@ -932,8 +938,9 @@ class WASRTK {
                 const step = e.shiftKey ? 10 : 1;
                 const nudge = nudgeMap[e.key];
                 this.detachSelectionFromLayer();
-                activeSelection.x = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.x + (nudge.x * step)));
-                activeSelection.y = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.y + (nudge.y * step)));
+                const nudgedPosition = this.clampSelectionPosition(activeSelection, activeSelection.x + (nudge.x * step), activeSelection.y + (nudge.y * step));
+                activeSelection.x = nudgedPosition.x;
+                activeSelection.y = nudgedPosition.y;
                 this.drawSelectionOutline(activeSelection, { showPreview: true });
                 return;
             }
@@ -1009,14 +1016,18 @@ class WASRTK {
         
         // Show/hide fill tolerance slider
         const toleranceSection = document.getElementById('fillToleranceSection');
-        if (tool === 'fill') {
+        if (tool === 'fill' || (tool === 'selection' && selectionMode === 'magic-wand')) {
             toleranceSection.style.display = 'block';
         } else {
             toleranceSection.style.display = 'none';
         }
+        document.querySelectorAll('.fill-only-option').forEach((option) => {
+            option.style.display = tool === 'fill' ? 'flex' : 'none';
+        });
 
         const selectionModeSection = document.getElementById('selectionModeSection');
         selectionModeSection.style.display = tool === 'selection' ? 'flex' : 'none';
+        this.updateSelectionHint();
 
         const brushShapeControl = document.querySelector('.brush-shape-control');
         const brushShapeTools = ['pen', 'line', 'eraser'];
@@ -1044,12 +1055,26 @@ class WASRTK {
         if (tool !== 'selection') {
             selectionInteraction = null;
             if (activeSelection) {
-                activeSelection = null;
-                this.clearOverlay();
+                this.clearSelection({ commitDetached: false });
             }
         }
         
         this.updateStatusBar();
+    }
+
+    updateSelectionHint() {
+        const hint = document.getElementById('selectionHint');
+        if (!hint) {
+            return;
+        }
+
+        const hints = {
+            rectangle: 'Drag to create a rectangular selection. Drag inside a selection to move it; Enter commits, Escape cancels.',
+            'magic-wand': 'Click a color region to select it. Adjust Tolerance above; Enter commits detached pixels, Escape cancels.',
+            lasso: 'Drag to draw a freeform selection. Release to finish; Enter commits detached pixels, Escape cancels.',
+            polygon: 'Click to add polygon points. Press Enter or click near the first point to finish; Escape cancels.'
+        };
+        hint.textContent = hints[selectionMode] || hints.rectangle;
     }
 
     setColor(color) {
@@ -1281,7 +1306,50 @@ class WASRTK {
         overlayCtx.setLineDash([5, 3]);
         overlayCtx.lineWidth = 1;
         overlayCtx.strokeRect(bounds.x + 0.5, bounds.y + 0.5, bounds.width, bounds.height);
+        this.drawSelectionMaskContour(bounds);
         overlayCtx.restore();
+    }
+
+    drawSelectionMaskContour(selection) {
+        if (!selection?.masked || !selection.imageData) {
+            return;
+        }
+
+        const { width, height, data } = selection.imageData;
+        overlayCtx.beginPath();
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const pos = ((y * width) + x) * 4;
+                if (data[pos + 3] === 0) {
+                    continue;
+                }
+
+                const left = x === 0 || data[pos - 1] === 0;
+                const right = x === width - 1 || data[pos + 7] === 0;
+                const top = y === 0 || data[pos - (width * 4) + 3] === 0;
+                const bottom = y === height - 1 || data[pos + (width * 4) + 3] === 0;
+                const px = selection.x + x + 0.5;
+                const py = selection.y + y + 0.5;
+
+                if (top) {
+                    overlayCtx.moveTo(px, py);
+                    overlayCtx.lineTo(px + 1, py);
+                }
+                if (right) {
+                    overlayCtx.moveTo(px + 1, py);
+                    overlayCtx.lineTo(px + 1, py + 1);
+                }
+                if (bottom) {
+                    overlayCtx.moveTo(px + 1, py + 1);
+                    overlayCtx.lineTo(px, py + 1);
+                }
+                if (left) {
+                    overlayCtx.moveTo(px, py + 1);
+                    overlayCtx.lineTo(px, py);
+                }
+            }
+        }
+        overlayCtx.stroke();
     }
 
     drawLassoPreview(points, currentPoint) {
@@ -1316,33 +1384,60 @@ class WASRTK {
         }
 
         const { width, height, data } = imageData;
-        const blurred = new Uint8ClampedArray(data);
+        const horizontalAlpha = new Uint8ClampedArray(width * height);
+        const output = new Uint8ClampedArray(data);
 
-        for (let pass = 0; pass < featherRadius; pass++) {
-            const src = new Uint8ClampedArray(blurred);
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    let alphaSum = 0;
-                    let count = 0;
-                    for (let oy = -1; oy <= 1; oy++) {
-                        for (let ox = -1; ox <= 1; ox++) {
-                            const nx = x + ox;
-                            const ny = y + oy;
-                            if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
-                                continue;
-                            }
-                            const nPos = ((ny * width) + nx) * 4;
-                            alphaSum += src[nPos + 3];
-                            count++;
-                        }
-                    }
-                    const pos = ((y * width) + x) * 4;
-                    blurred[pos + 3] = count > 0 ? Math.round(alphaSum / count) : src[pos + 3];
+        for (let y = 0; y < height; y++) {
+            let sum = 0;
+            let count = 0;
+            for (let x = -featherRadius; x <= featherRadius; x++) {
+                if (x >= 0 && x < width) {
+                    sum += data[((y * width) + x) * 4 + 3];
+                    count++;
+                }
+            }
+
+            for (let x = 0; x < width; x++) {
+                horizontalAlpha[(y * width) + x] = Math.round(sum / count);
+                const removeX = x - featherRadius;
+                const addX = x + featherRadius + 1;
+                if (removeX >= 0) {
+                    sum -= data[((y * width) + removeX) * 4 + 3];
+                    count--;
+                }
+                if (addX < width) {
+                    sum += data[((y * width) + addX) * 4 + 3];
+                    count++;
                 }
             }
         }
 
-        return new ImageData(blurred, width, height);
+        for (let x = 0; x < width; x++) {
+            let sum = 0;
+            let count = 0;
+            for (let y = -featherRadius; y <= featherRadius; y++) {
+                if (y >= 0 && y < height) {
+                    sum += horizontalAlpha[(y * width) + x];
+                    count++;
+                }
+            }
+
+            for (let y = 0; y < height; y++) {
+                output[((y * width) + x) * 4 + 3] = Math.round(sum / count);
+                const removeY = y - featherRadius;
+                const addY = y + featherRadius + 1;
+                if (removeY >= 0) {
+                    sum -= horizontalAlpha[(removeY * width) + x];
+                    count--;
+                }
+                if (addY < height) {
+                    sum += horizontalAlpha[(addY * width) + x];
+                    count++;
+                }
+            }
+        }
+
+        return new ImageData(output, width, height);
     }
 
     createLassoSelectionFromPoints(points) {
@@ -1432,7 +1527,9 @@ class WASRTK {
             originalX: minX,
             originalY: minY,
             detached: false,
-            sourceSnapshot: null
+            sourceSnapshot: null,
+            sourceBounds: null,
+            masked: true
         };
 
         this.drawSelectionOutline(activeSelection);
@@ -1533,7 +1630,9 @@ class WASRTK {
             originalX: minX,
             originalY: minY,
             detached: false,
-            sourceSnapshot: null
+            sourceSnapshot: null,
+            sourceBounds: null,
+            masked: true
         };
 
         this.drawSelectionOutline(activeSelection);
@@ -1634,8 +1733,9 @@ class WASRTK {
         if (selectionInteraction.mode === 'move' && activeSelection) {
             const dx = Math.round(coords.x - selectionInteraction.start.x);
             const dy = Math.round(coords.y - selectionInteraction.start.y);
-            activeSelection.x = selectionInteraction.originalX + dx;
-            activeSelection.y = selectionInteraction.originalY + dy;
+            const target = this.clampSelectionPosition(activeSelection, selectionInteraction.originalX + dx, selectionInteraction.originalY + dy);
+            activeSelection.x = target.x;
+            activeSelection.y = target.y;
             this.drawSelectionOutline(activeSelection, { showPreview: true });
         }
     }
@@ -1672,7 +1772,9 @@ class WASRTK {
                     originalX: bounds.x,
                     originalY: bounds.y,
                     detached: false,
-                    sourceSnapshot: null
+                    sourceSnapshot: null,
+                    sourceBounds: null,
+                    masked: false
                 };
                 this.drawSelectionOutline(activeSelection);
             }
@@ -1699,10 +1801,9 @@ class WASRTK {
             return;
         }
         const ctx = this.getLayerContext(layer);
-        const targetX = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, Math.round(nextX)));
-        const targetY = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, Math.round(nextY)));
+        const target = this.clampSelectionPosition(activeSelection, nextX, nextY);
 
-        if (targetX === activeSelection.originalX && targetY === activeSelection.originalY) {
+        if (target.x === activeSelection.originalX && target.y === activeSelection.originalY) {
             return;
         }
 
@@ -1710,14 +1811,77 @@ class WASRTK {
             this.saveState();
         }
 
-        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-        ctx.putImageData(activeSelection.imageData, targetX, targetY);
-        activeSelection.x = targetX;
-        activeSelection.y = targetY;
-        activeSelection.originalX = targetX;
-        activeSelection.originalY = targetY;
+        this.clearSelectionPixels(ctx, activeSelection, activeSelection.originalX, activeSelection.originalY);
+        ctx.putImageData(activeSelection.imageData, target.x, target.y);
+        activeSelection.x = target.x;
+        activeSelection.y = target.y;
+        activeSelection.originalX = target.x;
+        activeSelection.originalY = target.y;
         this.drawSelectionOutline(activeSelection);
         this.renderCurrentFrame();
+    }
+
+    getSelectionSourceBounds(selection) {
+        const bounds = selection?.sourceBounds || {
+            x: selection?.originalX || 0,
+            y: selection?.originalY || 0,
+            width: selection?.sourceSnapshot?.width || selection?.width || 0,
+            height: selection?.sourceSnapshot?.height || selection?.height || 0
+        };
+
+        const x = Math.max(0, Math.min(mainCanvas.width - 1, Math.round(bounds.x)));
+        const y = Math.max(0, Math.min(mainCanvas.height - 1, Math.round(bounds.y)));
+        return {
+            x,
+            y,
+            width: Math.max(1, Math.min(mainCanvas.width - x, Math.round(bounds.width))),
+            height: Math.max(1, Math.min(mainCanvas.height - y, Math.round(bounds.height)))
+        };
+    }
+
+    clampSelectionPosition(selection, x, y) {
+        const maxX = Math.max(0, mainCanvas.width - Math.max(1, selection?.width || 1));
+        const maxY = Math.max(0, mainCanvas.height - Math.max(1, selection?.height || 1));
+        return {
+            x: Math.max(0, Math.min(maxX, Math.round(x))),
+            y: Math.max(0, Math.min(maxY, Math.round(y)))
+        };
+    }
+
+    clearSelectionPixels(ctx, selection, x = selection.originalX, y = selection.originalY) {
+        const sourceBounds = selection?.sourceBounds;
+        const maskSource = sourceBounds && x === sourceBounds.x && y === sourceBounds.y && selection.sourceClearImageData
+            ? selection.sourceClearImageData
+            : selection?.imageData;
+        if (!maskSource) {
+            return;
+        }
+
+        if (!selection.masked) {
+            ctx.clearRect(x, y, maskSource.width, maskSource.height);
+            return;
+        }
+
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = maskSource.width;
+        maskCanvas.height = maskSource.height;
+        const maskCtx = maskCanvas.getContext('2d');
+        const maskImageData = new ImageData(
+            new Uint8ClampedArray(maskSource.data),
+            maskSource.width,
+            maskSource.height
+        );
+        for (let pos = 0; pos < maskImageData.data.length; pos += 4) {
+            maskImageData.data[pos] = 0;
+            maskImageData.data[pos + 1] = 0;
+            maskImageData.data[pos + 2] = 0;
+        }
+        maskCtx.putImageData(maskImageData, 0, 0);
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.drawImage(maskCanvas, x, y);
+        ctx.restore();
     }
 
     detachSelectionFromLayer() {
@@ -1730,8 +1894,15 @@ class WASRTK {
             return;
         }
         const ctx = this.getLayerContext(layer);
-        activeSelection.sourceSnapshot = ctx.getImageData(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
+        const sourceBounds = this.getSelectionSourceBounds(activeSelection);
+        activeSelection.sourceBounds = sourceBounds;
+        activeSelection.sourceSnapshot = ctx.getImageData(sourceBounds.x, sourceBounds.y, sourceBounds.width, sourceBounds.height);
+        activeSelection.sourceClearImageData = new ImageData(
+            new Uint8ClampedArray(activeSelection.imageData.data),
+            activeSelection.imageData.width,
+            activeSelection.imageData.height
+        );
+        this.clearSelectionPixels(ctx, activeSelection, sourceBounds.x, sourceBounds.y);
         activeSelection.detached = true;
         this.renderCurrentFrame();
     }
@@ -1746,16 +1917,22 @@ class WASRTK {
             return;
         }
         const ctx = this.getLayerContext(layer);
-        if (activeSelection.sourceSnapshot) {
-            ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
-        }
+        const sourceBounds = this.getSelectionSourceBounds(activeSelection);
+        const target = this.clampSelectionPosition(activeSelection, activeSelection.x, activeSelection.y);
         this.saveState();
-        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-        ctx.putImageData(activeSelection.imageData, activeSelection.x, activeSelection.y);
-        activeSelection.originalX = activeSelection.x;
-        activeSelection.originalY = activeSelection.y;
+        if (activeSelection.sourceSnapshot) {
+            ctx.putImageData(activeSelection.sourceSnapshot, sourceBounds.x, sourceBounds.y);
+        }
+        this.clearSelectionPixels(ctx, activeSelection, sourceBounds.x, sourceBounds.y);
+        ctx.putImageData(activeSelection.imageData, target.x, target.y);
+        activeSelection.x = target.x;
+        activeSelection.y = target.y;
+        activeSelection.originalX = target.x;
+        activeSelection.originalY = target.y;
         activeSelection.detached = false;
         activeSelection.sourceSnapshot = null;
+        activeSelection.sourceBounds = null;
+        activeSelection.sourceClearImageData = null;
         this.drawSelectionOutline(activeSelection);
         this.renderCurrentFrame();
     }
@@ -1770,13 +1947,18 @@ class WASRTK {
             return;
         }
         const ctx = this.getLayerContext(layer);
+        const sourceBounds = this.getSelectionSourceBounds(activeSelection);
         if (activeSelection.sourceSnapshot) {
-            ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
+            ctx.putImageData(activeSelection.sourceSnapshot, sourceBounds.x, sourceBounds.y);
         }
-        activeSelection.x = activeSelection.originalX;
-        activeSelection.y = activeSelection.originalY;
+        activeSelection.x = sourceBounds.x;
+        activeSelection.y = sourceBounds.y;
+        activeSelection.originalX = sourceBounds.x;
+        activeSelection.originalY = sourceBounds.y;
         activeSelection.detached = false;
         activeSelection.sourceSnapshot = null;
+        activeSelection.sourceBounds = null;
+        activeSelection.sourceClearImageData = null;
         this.drawSelectionOutline(activeSelection);
         this.renderCurrentFrame();
     }
@@ -1813,7 +1995,7 @@ class WASRTK {
             }
             this.saveState();
             const ctx = this.getLayerContext(layer);
-            ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
+            this.clearSelectionPixels(ctx, activeSelection, activeSelection.originalX, activeSelection.originalY);
             this.renderCurrentFrame();
             this.clearSelection();
         }
@@ -1845,10 +2027,29 @@ class WASRTK {
             height: selectionClipboard.height,
             imageData: refreshedData,
             originalX: pasteX,
-            originalY: pasteY
+            originalY: pasteY,
+            detached: false,
+            sourceSnapshot: null,
+            sourceBounds: null,
+            masked: false
         };
         this.drawSelectionOutline(activeSelection);
         this.renderCurrentFrame();
+    }
+
+    applySelectedTransformAction() {
+        const action = document.getElementById('transformActionSelect')?.value;
+        const angle = 12 * (Math.PI / 180);
+        const actions = {
+            'flip-horizontal': { flipX: true },
+            'flip-vertical': { flipY: true },
+            'rotate-90': { rotate90: true },
+            'scale-up': { scaleX: 1.25, scaleY: 1.25 },
+            'scale-down': { scaleX: 0.8, scaleY: 0.8 },
+            'skew-x': { skewX: angle },
+            'skew-y': { skewY: angle }
+        };
+        this.applyTransformAction(actions[action] || actions['flip-horizontal']);
     }
 
     applyTransformAction({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
@@ -1867,30 +2068,63 @@ class WASRTK {
         const sourceCtx = sourceCanvas.getContext('2d');
         sourceCtx.putImageData(sourceImageData, 0, 0);
 
+        const sx = (flipX ? -1 : 1) * scaleX;
+        const sy = (flipY ? -1 : 1) * scaleY;
+        const tanX = Math.tan(skewX);
+        const tanY = Math.tan(skewY);
+        const corners = [
+            { x: -sourceCanvas.width / 2, y: -sourceCanvas.height / 2 },
+            { x: sourceCanvas.width / 2, y: -sourceCanvas.height / 2 },
+            { x: sourceCanvas.width / 2, y: sourceCanvas.height / 2 },
+            { x: -sourceCanvas.width / 2, y: sourceCanvas.height / 2 }
+        ].map((corner) => this.transformPointForBounds(corner, { sx, sy, rotate90, tanX, tanY }));
+
+        const minX = Math.floor(Math.min(...corners.map((point) => point.x)));
+        const maxX = Math.ceil(Math.max(...corners.map((point) => point.x)));
+        const minY = Math.floor(Math.min(...corners.map((point) => point.y)));
+        const maxY = Math.ceil(Math.max(...corners.map((point) => point.y)));
+
         const outputCanvas = document.createElement('canvas');
-        const swapAxes = Boolean(rotate90);
-        const baseWidth = swapAxes ? sourceCanvas.height : sourceCanvas.width;
-        const baseHeight = swapAxes ? sourceCanvas.width : sourceCanvas.height;
-        const scaledWidth = Math.max(1, Math.round(baseWidth * Math.abs(scaleX)));
-        const scaledHeight = Math.max(1, Math.round(baseHeight * Math.abs(scaleY)));
-        const skewPadX = Math.ceil(Math.abs(Math.tan(skewX)) * scaledHeight);
-        const skewPadY = Math.ceil(Math.abs(Math.tan(skewY)) * scaledWidth);
-        outputCanvas.width = Math.max(1, scaledWidth + skewPadX);
-        outputCanvas.height = Math.max(1, scaledHeight + skewPadY);
+        outputCanvas.width = Math.max(1, maxX - minX);
+        outputCanvas.height = Math.max(1, maxY - minY);
         const outCtx = outputCanvas.getContext('2d');
         this.applyImageSmoothing(outCtx);
 
         outCtx.save();
-        outCtx.translate(outputCanvas.width / 2, outputCanvas.height / 2);
-        outCtx.transform(1, Math.tan(skewY), Math.tan(skewX), 1, 0, 0);
+        outCtx.translate(-minX, -minY);
+        outCtx.transform(1, tanY, tanX, 1, 0, 0);
         if (rotate90) {
             outCtx.rotate(Math.PI / 2);
         }
-        outCtx.scale((flipX ? -1 : 1) * scaleX, (flipY ? -1 : 1) * scaleY);
+        outCtx.scale(sx, sy);
         outCtx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
         outCtx.restore();
 
         return outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    }
+
+    transformPointForBounds(point, { sx, sy, rotate90, tanX, tanY }) {
+        let x = point.x * sx;
+        let y = point.y * sy;
+
+        if (rotate90) {
+            const rotatedX = -y;
+            y = x;
+            x = rotatedX;
+        }
+
+        return {
+            x: x + (tanX * y),
+            y: (tanY * x) + y
+        };
+    }
+
+    imageDataToCanvas(imageData) {
+        const canvas = document.createElement('canvas');
+        canvas.width = imageData.width;
+        canvas.height = imageData.height;
+        canvas.getContext('2d').putImageData(imageData, 0, 0);
+        return canvas;
     }
 
     transformActiveSelection({ flipX = false, flipY = false, rotate90 = false, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0 } = {}) {
@@ -1906,10 +2140,9 @@ class WASRTK {
         activeSelection.width = activeSelection.imageData.width;
         activeSelection.height = activeSelection.imageData.height;
 
-        activeSelection.x = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.x));
-        activeSelection.y = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.y));
-        activeSelection.originalX = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.originalX));
-        activeSelection.originalY = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.originalY));
+        const target = this.clampSelectionPosition(activeSelection, activeSelection.x, activeSelection.y);
+        activeSelection.x = target.x;
+        activeSelection.y = target.y;
 
         this.drawSelectionOutline(activeSelection, { showPreview: true });
     }
@@ -1929,9 +2162,9 @@ class WASRTK {
 
         ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
 
-        const offsetX = Math.max(0, Math.floor((layer.canvas.width - transformed.width) / 2));
-        const offsetY = Math.max(0, Math.floor((layer.canvas.height - transformed.height) / 2));
-        ctx.putImageData(transformed, offsetX, offsetY);
+        const offsetX = Math.floor((layer.canvas.width - transformed.width) / 2);
+        const offsetY = Math.floor((layer.canvas.height - transformed.height) / 2);
+        ctx.drawImage(this.imageDataToCanvas(transformed), offsetX, offsetY);
 
         this.renderCurrentFrame();
     }
@@ -1988,6 +2221,7 @@ class WASRTK {
         }
 
         isDrawing = true;
+        currentStrokeSeed = Math.floor(Math.random() * 0x7fffffff);
         currentInputPressure = this.getEventPressure(e);
         const coords = this.screenToCanvas(e.clientX, e.clientY);
         lastMousePos = coords; // Initialize last position
@@ -2038,6 +2272,7 @@ class WASRTK {
         });
 
         lastMousePos = null;
+        currentStrokeSeed = 0;
         this.startShape = null;
     }
 
@@ -2071,7 +2306,7 @@ class WASRTK {
         const safeStartY = Math.max(0, Math.min(height - 1, Math.round(startY)));
 
         if (!Number.isFinite(safeStartX) || !Number.isFinite(safeStartY)) {
-            return;
+            return 0;
         }
 
         const targetImageData = ctx.getImageData(0, 0, width, height);
@@ -2094,7 +2329,7 @@ class WASRTK {
             startG === fillG &&
             startB === fillB &&
             startA === fillA) {
-            return;
+            return 0;
         }
 
         const colorDistance = (index) => {
@@ -2114,7 +2349,7 @@ class WASRTK {
 
         if (fillContiguous) {
             const stack = [[safeStartX, safeStartY]];
-            const visited = new Set();
+            const visited = new Uint8Array(width * height);
 
             while (stack.length) {
                 const [x, y] = stack.pop();
@@ -2122,25 +2357,39 @@ class WASRTK {
                     continue;
                 }
 
-                const pos = (y * width + x) * 4;
-                if (visited.has(pos)) {
+                const idx = (y * width) + x;
+                if (visited[idx]) {
                     continue;
                 }
 
-                visited.add(pos);
+                visited[idx] = 1;
+                const pos = idx * 4;
                 if (colorDistance(pos) > fillTolerance) {
                     continue;
                 }
 
-                pixelsToFill.push(pos);
+                if (targetPixels[pos] !== fillR ||
+                    targetPixels[pos + 1] !== fillG ||
+                    targetPixels[pos + 2] !== fillB ||
+                    targetPixels[pos + 3] !== fillA) {
+                    pixelsToFill.push(pos);
+                }
                 stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
             }
         } else {
             for (let pos = 0; pos < samplePixels.length; pos += 4) {
-                if (colorDistance(pos) <= fillTolerance) {
+                if (colorDistance(pos) <= fillTolerance &&
+                    (targetPixels[pos] !== fillR ||
+                    targetPixels[pos + 1] !== fillG ||
+                    targetPixels[pos + 2] !== fillB ||
+                    targetPixels[pos + 3] !== fillA)) {
                     pixelsToFill.push(pos);
                 }
             }
+        }
+
+        if (pixelsToFill.length === 0) {
+            return 0;
         }
 
         pixelsToFill.forEach((pos) => {
@@ -2151,6 +2400,7 @@ class WASRTK {
         });
 
         ctx.putImageData(targetImageData, 0, 0);
+        return pixelsToFill.length;
     }
 
     getMergedVisibleLayersImageData() {
@@ -2193,6 +2443,10 @@ class WASRTK {
                 this.renderCurrentFrame();
             }
         } else {
+            x1 = Math.round(x1);
+            y1 = Math.round(y1);
+            x2 = Math.round(x2);
+            y2 = Math.round(y2);
             let dx = Math.abs(x2 - x1);
             let dy = Math.abs(y2 - y1);
             let sx = x1 < x2 ? 1 : -1;
@@ -2439,6 +2693,11 @@ class WASRTK {
         }
     }
 
+    seededRandom(seed) {
+        const value = Math.sin(seed) * 10000;
+        return value - Math.floor(value);
+    }
+
     drawBrushStamp(ctx, x, y, { color = currentColor } = {}) {
         const usePixelPreset = brushPreset === 'pixel';
         const shape = usePixelPreset ? 'square' : brushShape;
@@ -2477,13 +2736,15 @@ class WASRTK {
         if (brushPreset === 'textured') {
             ctx.fillStyle = color;
             const scatterCount = Math.max(8, Math.round(size * 2));
+            const strokeSeed = currentStrokeSeed || 1;
+            const stampSeed = (Math.round(x * 73856093) ^ Math.round(y * 19349663) ^ strokeSeed) >>> 0;
             for (let i = 0; i < scatterCount; i++) {
-                const angle = ((i * 97) % 360) * (Math.PI / 180);
-                const radius = (Math.sin((x + y + i) * 12.9898) * 0.5 + 0.5) * (size / 2);
+                const angle = this.seededRandom(stampSeed + (i * 1013)) * Math.PI * 2;
+                const radius = Math.sqrt(this.seededRandom(stampSeed + (i * 1619))) * (size / 2);
                 const dotX = x + Math.cos(angle) * radius;
                 const dotY = y + Math.sin(angle) * radius;
-                const dotSize = Math.max(1, Math.round(size / 6));
-                ctx.globalAlpha = baseAlpha * (0.35 + ((i % 7) / 10));
+                const dotSize = Math.max(1, Math.round(size / (5 + Math.floor(this.seededRandom(stampSeed + (i * 3571)) * 4))));
+                ctx.globalAlpha = baseAlpha * (0.35 + (this.seededRandom(stampSeed + (i * 2371)) * 0.65));
                 ctx.fillRect(Math.round(dotX), Math.round(dotY), dotSize, dotSize);
             }
             ctx.globalAlpha = originalAlpha;
@@ -2518,9 +2779,8 @@ class WASRTK {
 
         if (usePixelPreset || !antialiasingEnabled) {
             const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
-            ctx.fillStyle = color;
             points.forEach(({ x, y }) => {
-                this.drawPixelPerfectBrushStamp(ctx, x, y, adjustedSize, shape);
+                this.drawBrushStamp(ctx, x, y, { color });
             });
             return;
         }
@@ -2533,6 +2793,8 @@ class WASRTK {
             return;
         }
 
+        const originalAlpha = ctx.globalAlpha;
+        ctx.globalAlpha = originalAlpha * this.getPressureAdjustedFlow();
         ctx.strokeStyle = color;
         ctx.lineWidth = adjustedSize;
         ctx.lineCap = 'round';
@@ -2541,6 +2803,7 @@ class WASRTK {
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
+        ctx.globalAlpha = originalAlpha;
     }
 
     drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
@@ -3113,7 +3376,9 @@ class WASRTK {
         const pressureStatus = pressureSensitivityEnabled
             ? `pressure ${Math.round(currentInputPressure * 100)}%`
             : 'pressure off';
-        document.getElementById('brushSize').textContent = `Size: ${brushSize}px (${brushPreset}, flow ${Math.round(brushFlow * 100)}%, spacing ${Math.round(brushSpacing * 100)}%, ${pressureStatus})`;
+        const brushStatus = document.getElementById('brushSize');
+        brushStatus.textContent = `Brush: ${brushSize}px ${brushPreset}`;
+        brushStatus.title = `Flow ${Math.round(brushFlow * 100)}%, spacing ${Math.round(brushSpacing * 100)}%, ${pressureStatus}`;
         document.getElementById('currentFrame').textContent = `Frame: ${currentFrame + 1}`;
         document.getElementById('totalFrames').textContent = `Total: ${frames.length}`;
         document.getElementById('canvasDimensions').textContent = `${mainCanvas.width}x${mainCanvas.height}`;
@@ -3291,9 +3556,9 @@ class WASRTK {
         
         // Set global transparent background flag
         hasTransparentBackground = transparentBackground;
+        projectBackgroundColor = backgroundColor;
         
-        // Update canvas wrapper class for transparency
-        // this.updateTransparentBackgroundClass();
+        this.updateTransparentBackgroundClass();
         
         // Resize canvases
         mainCanvas.width = width;
@@ -3409,7 +3674,7 @@ class WASRTK {
                 canvas: {
                     width: mainCanvas.width,
                     height: mainCanvas.height,
-                    backgroundColor: hasTransparentBackground ? null : '#ffffff',
+                    backgroundColor: hasTransparentBackground ? null : projectBackgroundColor,
                     transparentBackground: hasTransparentBackground,
                     author: 'WASRTK'
                 },
@@ -3512,6 +3777,13 @@ class WASRTK {
         
         this.redoStack = [];
         this.updateUndoRedoButtons();
+    }
+
+    discardLastUndoState() {
+        if (this.undoStack.length > 0) {
+            this.undoStack.pop();
+            this.updateUndoRedoButtons();
+        }
     }
 
     saveStructureState() {
@@ -3781,6 +4053,7 @@ class WASRTK {
                 overlayCanvas.width = projectData.canvas.width;
                 overlayCanvas.height = projectData.canvas.height;
                 hasTransparentBackground = projectData.canvas.transparentBackground || false;
+                projectBackgroundColor = projectData.canvas.backgroundColor || '#ffffff';
             }
 
             frames = await buildFramesFromProject({
@@ -3852,6 +4125,10 @@ class WASRTK {
             document.getElementById('referenceOpacity').value = referenceOpacity * 100;
             document.getElementById('referenceOpacityValue').value = Math.round(referenceOpacity * 100);
             document.getElementById('antialiasingEnabled').checked = antialiasingEnabled;
+            document.getElementById('transparentBackground').checked = hasTransparentBackground;
+            document.getElementById('backgroundColor').value = projectBackgroundColor;
+            document.getElementById('transparentBackground').dispatchEvent(new Event('change'));
+            this.updateTransparentBackgroundClass();
             document.getElementById('colorPicker').value = currentColor;
             document.getElementById('brushSizeSlider').value = brushSize;
             document.getElementById('brushSizeValue').textContent = brushSize + 'px';

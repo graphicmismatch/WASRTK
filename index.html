@@ -69,11 +69,11 @@
                         <label for="fillToleranceSlider">Tolerance:</label>
                         <input type="range" id="fillToleranceSlider" min="0" max="255" value="0" class="slider">
                         <span id="fillToleranceValue">0</span>
-                        <label class="fill-option">
+                        <label class="fill-option fill-only-option">
                             <input type="checkbox" id="fillContiguous" checked>
                             Contiguous Fill
                         </label>
-                        <label class="fill-option">
+                        <label class="fill-option fill-only-option">
                             <input type="checkbox" id="fillSampleAllLayers">
                             Sample All Layers
                         </label>
@@ -86,13 +86,14 @@
                             <option value="lasso">Lasso</option>
                             <option value="polygon">Polygon</option>
                         </select>
-                        <label class="fill-option">
+                        <label class="selection-option">
                             <input type="checkbox" id="selectionAntialias" checked>
-                            Selection Anti-alias
+                            Lasso/Polygon Anti-alias
                         </label>
                         <label for="selectionFeatherSlider">Feather:</label>
                         <input type="range" id="selectionFeatherSlider" min="0" max="10" value="0" class="slider">
                         <span id="selectionFeatherValue">0px</span>
+                        <div id="selectionHint" class="selection-hint">Drag to create a rectangular selection. Drag inside a selection to move it; Enter commits, Escape cancels.</div>
                     </div>
                 </div>
 
@@ -191,13 +192,16 @@
                         </button>
                     </div>
                     <div class="transform-controls">
-                        <button id="flipHorizontalBtn" class="btn btn-small" title="Flip active selection horizontally (or current layer if no selection).">Flip H</button>
-                        <button id="flipVerticalBtn" class="btn btn-small" title="Flip active selection vertically (or current layer if no selection).">Flip V</button>
-                        <button id="rotate90Btn" class="btn btn-small" title="Rotate active selection 90° clockwise (or current layer if no selection).">Rotate 90°</button>
-                        <button id="scaleUpBtn" class="btn btn-small" title="Scale active selection/layer up by 25%.">Scale +</button>
-                        <button id="scaleDownBtn" class="btn btn-small" title="Scale active selection/layer down by 20%.">Scale -</button>
-                        <button id="skewXBtn" class="btn btn-small" title="Skew active selection/layer along X axis.">Skew X</button>
-                        <button id="skewYBtn" class="btn btn-small" title="Skew active selection/layer along Y axis.">Skew Y</button>
+                        <select id="transformActionSelect" title="Choose a transform for the active selection, or for the current layer when no selection is active.">
+                            <option value="flip-horizontal">Flip Horizontal</option>
+                            <option value="flip-vertical">Flip Vertical</option>
+                            <option value="rotate-90">Rotate 90°</option>
+                            <option value="scale-up">Scale Up 25%</option>
+                            <option value="scale-down">Scale Down 20%</option>
+                            <option value="skew-x">Skew X 12°</option>
+                            <option value="skew-y">Skew Y 12°</option>
+                        </select>
+                        <button id="applyTransformBtn" class="btn btn-small" title="Apply the selected transform to the active selection, or current layer if no selection is active.">Apply</button>
                     </div>
                     <div id="layerList" class="layer-list">
                         <div class="layer-item active" data-layer="0">

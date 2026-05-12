@@ -373,7 +373,8 @@ body {
     gap: 8px;
 }
 
-.fill-option {
+.fill-option,
+.selection-option {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -382,7 +383,8 @@ body {
     cursor: pointer;
 }
 
-.fill-option input[type="checkbox"] {
+.fill-option input[type="checkbox"],
+.selection-option input[type="checkbox"] {
     width: 15px;
     height: 15px;
     accent-color: var(--accent);
@@ -401,6 +403,12 @@ body {
     border: 1px solid var(--bg-med);
     border-radius: 4px;
     padding: 6px 8px;
+}
+
+.selection-hint {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.35;
 }
 
 /* Buttons */
@@ -696,15 +704,25 @@ body {
 
 .transform-controls {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 6px;
     margin-bottom: 10px;
+}
+
+.transform-controls select {
+    min-width: 0;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    border: 1px solid var(--bg-med);
+    border-radius: 4px;
+    padding: 6px 8px;
 }
 
 .transform-controls .btn {
     justify-content: center;
     font-size: 12px;
     padding: 6px 8px;
+    white-space: nowrap;
 }
 
 .layer-list {
