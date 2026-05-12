@@ -51,6 +51,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - [x] Add selection anti-alias and feather controls for advanced lasso/polygon/magic-wand workflows. **Done**
 - [x] Improve polygon selection UX with live hover edge preview between vertex clicks. **Done**
 - [x] Fix paint bucket behavior on transparent backgrounds by matching and writing alpha during flood fills. **Done**
+- [x] Add Phase 1 interaction bug audit covering remaining tool, selection, transform, fill, and project UX issues. **Done**
 
 
 ## Fully fledged drawing app plan
