@@ -65,10 +65,35 @@
                             <i class="fas fa-eye-dropper"></i>
                         </button>
                     </div>
-                    <div id="fillToleranceSection" class="panel-section" style="display: none;">
+                    <div id="fillToleranceSection" class="panel-section fill-controls" style="display: none;">
                         <label for="fillToleranceSlider">Tolerance:</label>
                         <input type="range" id="fillToleranceSlider" min="0" max="255" value="0" class="slider">
                         <span id="fillToleranceValue">0</span>
+                        <label class="fill-option fill-only-option">
+                            <input type="checkbox" id="fillContiguous" checked>
+                            Contiguous Fill
+                        </label>
+                        <label class="fill-option fill-only-option">
+                            <input type="checkbox" id="fillSampleAllLayers">
+                            Sample All Layers
+                        </label>
+                    </div>
+                    <div id="selectionModeSection" class="panel-section" style="display: none;">
+                        <label for="selectionModeSelect">Selection Mode:</label>
+                        <select id="selectionModeSelect">
+                            <option value="rectangle" selected>Rectangle</option>
+                            <option value="magic-wand">Magic Wand</option>
+                            <option value="lasso">Lasso</option>
+                            <option value="polygon">Polygon</option>
+                        </select>
+                        <label class="selection-option">
+                            <input type="checkbox" id="selectionAntialias" checked>
+                            Lasso/Polygon Anti-alias
+                        </label>
+                        <label for="selectionFeatherSlider">Feather:</label>
+                        <input type="range" id="selectionFeatherSlider" min="0" max="10" value="0" class="slider">
+                        <span id="selectionFeatherValue">0px</span>
+                        <div id="selectionHint" class="selection-hint">Drag to create a rectangular selection. Drag inside a selection to move it; Enter commits, Escape cancels.</div>
                     </div>
                 </div>
 
@@ -85,6 +110,39 @@
                             <option value="circle" selected>Circle</option>
                             <option value="square">Square</option>
                         </select>
+                    </div>
+                    <div class="brush-preset-control">
+                        <label for="brushPresetSelect">Brush Preset:</label>
+                        <select id="brushPresetSelect" title="Choose a brush behavior preset for pen and eraser tools.">
+                            <option value="hard-round" selected>Hard Round</option>
+                            <option value="soft-round">Soft Round</option>
+                            <option value="pixel">Pixel</option>
+                            <option value="textured">Textured</option>
+                        </select>
+                    </div>
+                    <div class="brush-advanced-control">
+                        <label for="brushFlowSlider">Flow:</label>
+                        <input type="range" id="brushFlowSlider" min="1" max="100" value="100" class="slider">
+                        <span id="brushFlowValue">100%</span>
+                    </div>
+                    <div class="brush-advanced-control">
+                        <label for="brushSpacingSlider">Spacing:</label>
+                        <input type="range" id="brushSpacingSlider" min="1" max="100" value="25" class="slider">
+                        <span id="brushSpacingValue">25%</span>
+                    </div>
+                    <div class="pressure-controls">
+                        <label class="fill-option">
+                            <input type="checkbox" id="pressureSensitivityEnabled" checked>
+                            Pressure Sensitivity
+                        </label>
+                        <label class="fill-option">
+                            <input type="checkbox" id="pressureAffectsSize" checked>
+                            Pressure Affects Size
+                        </label>
+                        <label class="fill-option">
+                            <input type="checkbox" id="pressureAffectsFlow" checked>
+                            Pressure Affects Flow
+                        </label>
                     </div>
                     <div class="antialiasing-control">
                         <label>
@@ -132,6 +190,18 @@
                         <button id="flattenLayerBtn" class="btn btn-small" title="Flatten Layer Down">
                             <i class="fas fa-layer-group"></i>
                         </button>
+                    </div>
+                    <div class="transform-controls">
+                        <select id="transformActionSelect" title="Choose a transform for the active selection, or for the current layer when no selection is active.">
+                            <option value="flip-horizontal">Flip Horizontal</option>
+                            <option value="flip-vertical">Flip Vertical</option>
+                            <option value="rotate-90">Rotate 90°</option>
+                            <option value="scale-up">Scale Up 25%</option>
+                            <option value="scale-down">Scale Down 20%</option>
+                            <option value="skew-x">Skew X 12°</option>
+                            <option value="skew-y">Skew Y 12°</option>
+                        </select>
+                        <button id="applyTransformBtn" class="btn btn-small" title="Apply the selected transform to the active selection, or current layer if no selection is active.">Apply</button>
                     </div>
                     <div id="layerList" class="layer-list">
                         <div class="layer-item active" data-layer="0">
@@ -316,7 +386,7 @@
         </div>
     </div>
 
-    <script src="./node_modules/gif.js/dist/gif.js"></script>
+    <script src="./vendor/gif/gif.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

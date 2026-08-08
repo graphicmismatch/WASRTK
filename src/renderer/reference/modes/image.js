@@ -1,7 +1,16 @@
-function syncReferenceUI(dataUrl, scale) {
+const { setReferenceToggleIcon } = require('../settings');
+
+// Syncs the <img id="referenceImage"> preview + zoom controls to a newly
+// loaded reference. `forceVisible` (default true) also unhides the preview
+// element — callers that only refresh image content without changing
+// visibility (periodic screen-share ticks) pass `forceVisible: false` so a
+// hidden reference stays hidden.
+function syncReferenceUI(dataUrl, scale, { forceVisible = true } = {}) {
   const uiImage = document.getElementById('referenceImage');
   uiImage.src = dataUrl;
-  uiImage.style.display = 'block';
+  if (forceVisible) {
+    uiImage.style.display = 'block';
+  }
   uiImage.style.transform = 'scale(1)';
 
   const zoomSlider = document.getElementById('referenceZoom');
@@ -22,7 +31,7 @@ function loadReferenceFromBlob(app, api, blob, sourceName) {
 
       if (!api.isVisible()) {
         api.setVisible(true);
-        document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
+        setReferenceToggleIcon(true);
       }
 
       app.updateReferencePreview();
@@ -49,13 +58,7 @@ function updateReferenceImageOnly(app, api, blob) {
       api.setScale(currentScale);
       api.setVisible(currentVisible);
 
-      const uiImage = document.getElementById('referenceImage');
-      uiImage.src = e.target.result;
-      uiImage.style.transform = 'scale(1)';
-
-      const zoomSlider = document.getElementById('referenceZoom');
-      zoomSlider.value = Math.round(api.getScale() * 100);
-      document.getElementById('referenceZoomValue').value = Math.round(api.getScale() * 100);
+      syncReferenceUI(e.target.result, api.getScale(), { forceVisible: false });
 
       app.updateReferencePreview();
       app.renderCurrentFrame();
@@ -64,6 +67,26 @@ function updateReferenceImageOnly(app, api, blob) {
     img.src = e.target.result;
   };
   reader.readAsDataURL(blob);
+}
+
+// Sets a freshly loaded (not merely refreshed) reference image: resets
+// position/scale to defaults and always forces the reference visible,
+// unlike loadReferenceFromBlob/updateReferenceImageOnly above, which
+// preserve or conditionally touch visibility for their own callers
+// (screen-share ticks, drag-and-drop of a new file over an existing one).
+function setLoadedReferenceImage(app, api, img, dataUrl) {
+  api.setImage(img);
+  api.setPosition((api.getCanvasWidth() - img.width) / 2, (api.getCanvasHeight() - img.height) / 2);
+  api.setScale(1.0);
+
+  syncReferenceUI(dataUrl, api.getScale());
+
+  api.setVisible(true);
+  setReferenceToggleIcon(true);
+
+  app.updateReferencePreview();
+  app.renderCurrentFrame();
+  app.updateStatusBar();
 }
 
 function loadReferenceImage(app) {
@@ -82,7 +105,7 @@ function loadReferenceImage(app) {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        app.setLoadedReferenceImage(img, event.target.result);
+        setLoadedReferenceImage(app, app.getReferenceApi(), img, event.target.result);
       };
       img.src = event.target.result;
     };
@@ -94,5 +117,7 @@ function loadReferenceImage(app) {
 module.exports = {
   loadReferenceImage,
   loadReferenceFromBlob,
-  updateReferenceImageOnly
+  updateReferenceImageOnly,
+  setLoadedReferenceImage,
+  syncReferenceUI
 };

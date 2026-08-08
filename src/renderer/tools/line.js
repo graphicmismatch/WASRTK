@@ -1,18 +1,3 @@
-module.exports = {
-  id: 'line',
-  saveStateOnStart: true,
-  isShapeTool: true,
-  onStart(app) {
-    app.clearOverlay();
-  },
-  onDraw(app, { startShape, currentCoords }) {
-    app.clearOverlay();
-    app.drawShapePreview(startShape, currentCoords, 'line');
-  },
-  onStop(app, { startShape, lastMousePos }) {
-    if (startShape && lastMousePos) {
-      app.commitShape(startShape, lastMousePos, 'line');
-      app.clearOverlay();
-    }
-  }
-};
+const { createShapeTool } = require('./lib/shape-tool');
+
+module.exports = createShapeTool({ id: 'line' });

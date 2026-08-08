@@ -1,6 +1,5 @@
-const fs = require('fs');
-const path = require('path');
 const { app } = require('electron');
+const { createJsonConfigStore } = require('./json-config-store');
 
 const THEME_FILE_NAME = 'theme.json';
 
@@ -22,16 +21,6 @@ const DEFAULT_THEME = {
   'brush-preview-border': 'rgba(0, 0, 0, 0.8)'
 };
 
-function getThemeConfigPath() {
-  return path.join(app.getPath('userData'), THEME_FILE_NAME);
-}
-
-function ensureThemeDirectory() {
-  const configPath = getThemeConfigPath();
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  return configPath;
-}
-
 function sanitizeTheme(theme) {
   if (!theme || typeof theme !== 'object' || Array.isArray(theme)) {
     return { ...DEFAULT_THEME };
@@ -44,29 +33,27 @@ function sanitizeTheme(theme) {
   }, {});
 }
 
+const store = createJsonConfigStore({
+  getDir: () => app.getPath('userData'),
+  fileName: THEME_FILE_NAME,
+  defaults: DEFAULT_THEME,
+  sanitize: sanitizeTheme
+});
+
+function toThemeResult(result) {
+  const output = { theme: result.data, path: result.path };
+  if (result.recoveredFromError) {
+    output.recoveredFromError = result.recoveredFromError;
+  }
+  return output;
+}
+
 function loadThemeConfig() {
-  const configPath = ensureThemeDirectory();
-
-  if (!fs.existsSync(configPath)) {
-    fs.writeFileSync(configPath, JSON.stringify(DEFAULT_THEME, null, 2), 'utf8');
-    return { theme: { ...DEFAULT_THEME }, path: configPath };
-  }
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    const theme = sanitizeTheme(parsed);
-    return { theme, path: configPath };
-  } catch (error) {
-    fs.writeFileSync(configPath, JSON.stringify(DEFAULT_THEME, null, 2), 'utf8');
-    return { theme: { ...DEFAULT_THEME }, path: configPath, recoveredFromError: error.message };
-  }
+  return toThemeResult(store.load());
 }
 
 function saveThemeConfig(theme) {
-  const configPath = ensureThemeDirectory();
-  const sanitizedTheme = sanitizeTheme(theme);
-  fs.writeFileSync(configPath, JSON.stringify(sanitizedTheme, null, 2), 'utf8');
-  return { theme: sanitizedTheme, path: configPath };
+  return toThemeResult(store.save(theme));
 }
 
 function resetThemeConfig() {
@@ -75,9 +62,7 @@ function resetThemeConfig() {
 
 module.exports = {
   DEFAULT_THEME,
-  getThemeConfigPath,
   loadThemeConfig,
   saveThemeConfig,
-  resetThemeConfig,
-  sanitizeTheme
+  resetThemeConfig
 };

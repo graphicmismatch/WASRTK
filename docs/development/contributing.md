@@ -35,20 +35,25 @@ Check these areas when behavior changes:
 - `docs/api/ipc-communication.md`
 - Feature and implementation pages relevant to the change
 
-## Manual verification guidance
+## Verification guidance
 
-Because the repo has no automated tests, include a short manual verification list. Common checks:
+Run `npm test` and `npm run smoke` before opening a PR (see
+[Testing Guide](./testing.md)). They cover the pure-function modules and a
+handful of core interaction flows, but not the full interaction surface —
+still include a short manual verification list for anything they don't
+reach. Common checks:
 
 - Launch with `npm start` or `npm run dev`
 - Draw on the canvas with the affected tool
 - Save and reload a project
 - Export a PNG sequence or GIF when export code changed
 - Exercise screen capture or reference image behavior when relevant
-- Open Theme Settings when theme-related code changed
+- Open Theme Settings or the Palette Editor when related code changed
+- Run the relevant section(s) of the [manual interaction checklist](../qa/manual-interaction-checklist.md) for interaction-affecting changes, and record the run in `docs/qa/runs/` if it's a substantial pass
 
 ## Areas of ownership
 
-- `src/main/`: Electron shell, menus, dialogs, IPC registration, theme persistence
+- `src/main/`: Electron shell, menus, dialogs, IPC registration, theme/palette persistence
 - `src/renderer/`: editor behavior, serialization, exporters, theme sync, references
 - `index.html` and `styles.css`: layout and interaction affordances
 

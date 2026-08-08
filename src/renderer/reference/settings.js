@@ -14,6 +14,16 @@ function setReferenceZoomInputValue(value) {
   document.getElementById('referenceZoomValue').value = value;
 }
 
+// Writes the toggleReferenceBtn eye icon: fa-eye-slash ("click to hide")
+// when a reference is visible, fa-eye ("click to show") otherwise. Shared
+// by every site that flips reference visibility, so the markup stays
+// byte-identical everywhere it's written.
+function setReferenceToggleIcon(visible) {
+  document.getElementById('toggleReferenceBtn').innerHTML = visible
+    ? '<i class="fas fa-eye-slash"></i>'
+    : '<i class="fas fa-eye"></i>';
+}
+
 function repositionReferenceFromPreview(event, app, api) {
   const image = api.getImage();
   const previewImage = document.getElementById('referenceImage');
@@ -145,11 +155,13 @@ function bindReferenceSettingsEvents(app, api) {
   });
 }
 
+function hasReferenceSource(app, api) {
+  return Boolean(api.getImage() || app.screenCaptureInterval);
+}
+
 function toggleReference(app, api) {
   api.setVisible(!api.isVisible());
-  document.getElementById('toggleReferenceBtn').innerHTML = api.isVisible()
-    ? '<i class="fas fa-eye-slash"></i>'
-    : '<i class="fas fa-eye"></i>';
+  setReferenceToggleIcon(api.isVisible());
   app.updateReferencePreview();
   app.renderCurrentFrame();
   app.updateStatusBar();
@@ -187,7 +199,7 @@ function clearReferenceImage(app, api) {
   setReferenceZoomInputValue(100);
   setReferenceOpacityInputValue(50);
 
-  document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye"></i>';
+  setReferenceToggleIcon(false);
 
   app.renderCurrentFrame();
   app.updateStatusBar();
@@ -217,10 +229,12 @@ function updateReferencePreview(api) {
 
 module.exports = {
   bindReferenceSettingsEvents,
+  hasReferenceSource,
   toggleReference,
   resetReferencePosition,
   clearReferenceImage,
   updateReferencePreview,
   setReferenceOpacityInputValue,
-  setReferenceZoomInputValue
+  setReferenceZoomInputValue,
+  setReferenceToggleIcon
 };

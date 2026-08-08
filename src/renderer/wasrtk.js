@@ -1,9 +1,22 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
-const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif } = require('./exporters');
+const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, drawVisibleLayersToContext } = require('./exporters');
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
+const { clampNumber } = require('./math-utils');
 const { loadTools } = require('./tools');
 const reference = require('./reference');
+const { dedupeColors, hexToRgb, rgbToHex } = require('./color-utils');
+const brushEngine = require('./brush-engine');
+const { createHistory } = require('./history');
+const { createSelectionManager } = require('./selection-manager');
+const { createZoomController } = require('./zoom');
+const { createStatusBar } = require('./status-bar');
+const { createPaletteUI } = require('./palette-ui');
+const { createFrameManager } = require('./frame-manager');
+const { createLayerManager } = require('./layer-manager');
+const { bindAppEvents } = require('./event-bindings');
+const { createCanvasEngine } = require('./canvas-engine');
+const { createBrushSettings } = require('./brush-settings');
 
 // Global variables
 let currentTool = 'pen';
@@ -11,6 +24,13 @@ let currentColor = '#000000';
 let currentOpacity = 1.0; // Alpha channel support
 let brushSize = 1;
 let brushShape = 'circle';
+let brushPreset = 'hard-round';
+let brushFlow = 1;
+let brushSpacing = 0.25;
+let pressureSensitivityEnabled = true;
+let pressureAffectsSize = true;
+let pressureAffectsFlow = true;
+let currentInputPressure = 1;
 let isDrawing = false;
 let currentFrame = 0;
 let currentLayer = 0;
@@ -32,13 +52,19 @@ let zoom = 1;
 let lastMousePos = null; // Store last mouse position for line interpolation
 let antialiasingEnabled = true; // Global antialiasing toggle
 let fillTolerance = 0; // Tolerance for flood fill
+let fillContiguous = true;
+let fillSampleAllLayers = false;
 let draggedFrameIndex = null;
 let selectedPalette = 'lospec-journey';
 let activeSelection = null;
 let selectionInteraction = null;
 let selectionClipboard = null;
+let selectionMode = 'rectangle';
+let selectionAntialias = true;
+let selectionFeather = 0;
 let penLastDrawnPoint = null;
 let penLineAnchor = null;
+let currentStrokeSeed = 0;
 
 // Panning state
 let isPanning = false;
@@ -47,6 +73,7 @@ let panStartScroll = { left: 0, top: 0 };
 
 // Project settings
 let hasTransparentBackground = false; // Track if project has transparent background
+let projectBackgroundColor = '#ffffff';
 
 // Canvas elements
 const mainCanvas = document.getElementById('mainCanvas');
@@ -77,42 +104,214 @@ const BUILTIN_PALETTE_IDS = new Set(Object.keys(COLOR_PALETTES));
 let strokeCanvas = null;
 let strokeCtx = null;
 
-function normalizeHexColor(value) {
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const cleaned = value.trim().replace(/^#/, '').toLowerCase();
-    if (/^[0-9a-f]{3}$/.test(cleaned)) {
-        return `#${cleaned.split('').map((c) => c + c).join('')}`;
-    }
-    if (/^[0-9a-f]{6}$/.test(cleaned)) {
-        return `#${cleaned}`;
-    }
-
-    return null;
+// Creates a plain canvas of the given size (no smoothing/fill applied).
+// Shared by every call site that hands a bare `(width, height) => canvas`
+// factory to project-io/exporters helpers.
+function createCanvas(width, height) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
 }
 
-function dedupeColors(colors) {
-    const uniqueColors = [];
-    const seen = new Set();
-    colors.forEach((color) => {
-        const normalized = normalizeHexColor(color);
-        if (!normalized || seen.has(normalized)) {
-            return;
-        }
-        seen.add(normalized);
-        uniqueColors.push(normalized);
-    });
-    return uniqueColors;
+// Creates a layer-sized canvas, optionally smoothing-configured and
+// pre-filled. `transparent: true` leaves the canvas blank (a fresh canvas
+// already starts fully transparent, so this is a no-op paint used mainly
+// for symmetry); `transparent: false` fills it with backgroundColor.
+function createLayerCanvas({ width, height, transparent = true, backgroundColor = '#ffffff', applySmoothing } = {}) {
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    if (applySmoothing) {
+        applySmoothing(ctx);
+    }
+    if (transparent) {
+        ctx.clearRect(0, 0, width, height);
+    } else {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, width, height);
+    }
+    return { canvas, ctx };
 }
 
 // Initialize the application
 class WASRTK {
     constructor() {
+        // Built once: screen-capture.js polls getReferenceApi() several
+        // times per tick, and its accessors are closures over module
+        // globals, so a single cached instance stays correct forever.
+        this._referenceApi = this.buildReferenceApi();
+        this.canvasWrapper = document.querySelector('.canvas-wrapper');
         this.tools = loadTools();
-        this.undoStack = [];
-        this.redoStack = [];
+        this._zoom = createZoomController({
+            getZoom: () => zoom,
+            setZoom: (value) => { zoom = value; },
+            mainCanvas,
+            overlayCanvas,
+            canvasWrapper: this.canvasWrapper,
+            clampNumber,
+            refreshBrushPreviewFromCursor: () => this.refreshBrushPreviewFromCursor()
+        });
+        this._statusBar = createStatusBar({
+            getCurrentTool: () => currentTool,
+            getCurrentColor: () => currentColor,
+            getPressureSensitivityEnabled: () => pressureSensitivityEnabled,
+            getCurrentInputPressure: () => currentInputPressure,
+            getBrushSize: () => brushSize,
+            getBrushPreset: () => brushPreset,
+            getBrushFlow: () => brushFlow,
+            getBrushSpacing: () => brushSpacing,
+            getCurrentFrame: () => currentFrame,
+            getFrames: () => frames,
+            mainCanvas,
+            getLayers: () => layers,
+            getCurrentLayer: () => currentLayer,
+            getAntialiasingEnabled: () => antialiasingEnabled,
+            getReferenceImage: () => referenceImage,
+            getReferenceVisible: () => referenceVisible,
+            getReferenceScale: () => referenceScale
+        });
+        this._paletteUI = createPaletteUI({
+            colorPalettes: COLOR_PALETTES,
+            builtinPaletteIds: BUILTIN_PALETTE_IDS,
+            getSelectedPalette: () => selectedPalette,
+            setSelectedPalette: (value) => { selectedPalette = value; },
+            dedupeColors,
+            ipcRenderer
+        });
+        this._frameManager = createFrameManager({
+            getFrames: () => frames,
+            getCurrentFrame: () => currentFrame,
+            setCurrentFrame: (value) => { currentFrame = value; },
+            getLayers: () => layers,
+            getActiveSelection: () => activeSelection,
+            getDraggedFrameIndex: () => draggedFrameIndex,
+            setDraggedFrameIndex: (value) => { draggedFrameIndex = value; },
+            getIsAnimating: () => isAnimating,
+            setIsAnimating: (value) => { isAnimating = value; },
+            getOnionSkinningEnabled: () => onionSkinningEnabled,
+            getOnionSkinningRange: () => onionSkinningRange,
+            getReferenceImage: () => referenceImage,
+            getReferenceVisible: () => referenceVisible,
+            getReferenceOpacity: () => referenceOpacity,
+            getReferenceX: () => referenceX,
+            getReferenceY: () => referenceY,
+            getReferenceScale: () => referenceScale,
+            getHasTransparentBackground: () => hasTransparentBackground,
+            getProjectBackgroundColor: () => projectBackgroundColor,
+            mainCanvas,
+            mainCtx,
+            createLayerCanvas,
+            drawVisibleLayersToContext,
+            applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
+            clearSelection: () => this.clearSelection(),
+            saveStructureState: () => this.saveStructureState(),
+            updateStatusBar: () => this.updateStatusBar()
+        });
+        this._layerManager = createLayerManager({
+            getFrames: () => frames,
+            getLayers: () => layers,
+            getCurrentLayer: () => currentLayer,
+            setCurrentLayer: (value) => { currentLayer = value; },
+            getActiveSelection: () => activeSelection,
+            mainCanvas,
+            createLayerCanvas,
+            applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
+            getLayerContext: (layer) => this.getLayerContext(layer),
+            clearSelection: () => this.clearSelection(),
+            saveStructureState: () => this.saveStructureState(),
+            renderCurrentFrame: () => this.renderCurrentFrame(),
+            updateStatusBar: () => this.updateStatusBar()
+        });
+        this._canvasEngine = createCanvasEngine(this, {
+            getIsDrawing: () => isDrawing,
+            setIsDrawing: (value) => { isDrawing = value; },
+            setCurrentStrokeSeed: (value) => { currentStrokeSeed = value; },
+            setCurrentInputPressure: (value) => { currentInputPressure = value; },
+            getLastMousePos: () => lastMousePos,
+            setLastMousePos: (value) => { lastMousePos = value; },
+            getCurrentTool: () => currentTool,
+            getCurrentColor: () => currentColor,
+            getBrushSize: () => brushSize,
+            getCurrentOpacity: () => currentOpacity,
+            getAntialiasingEnabled: () => antialiasingEnabled,
+            getStrokeCtx: () => strokeCtx,
+            getFillSampleAllLayers: () => fillSampleAllLayers,
+            getFillContiguous: () => fillContiguous,
+            getFillTolerance: () => fillTolerance,
+            getFrames: () => frames,
+            getCurrentFrame: () => currentFrame,
+            mainCanvas,
+            overlayCtx,
+            createCanvas
+        });
+        this._brushSettings = createBrushSettings(this, {
+            getCurrentColor: () => currentColor,
+            setCurrentColor: (value) => { currentColor = value; },
+            getCurrentTool: () => currentTool,
+            getBrushSize: () => brushSize,
+            setBrushSize: (value) => { brushSize = value; },
+            getBrushShape: () => brushShape,
+            setBrushShape: (value) => { brushShape = value; },
+            getBrushPreset: () => brushPreset,
+            setBrushPreset: (value) => { brushPreset = value; },
+            getBrushFlow: () => brushFlow,
+            setBrushFlow: (value) => { brushFlow = value; },
+            setBrushSpacing: (value) => { brushSpacing = value; },
+            getCurrentOpacity: () => currentOpacity,
+            setCurrentOpacity: (value) => { currentOpacity = value; },
+            getPressureSensitivityEnabled: () => pressureSensitivityEnabled,
+            getPressureAffectsSize: () => pressureAffectsSize,
+            getPressureAffectsFlow: () => pressureAffectsFlow,
+            getCurrentInputPressure: () => currentInputPressure,
+            getZoom: () => zoom,
+            getStrokeCanvas: () => strokeCanvas,
+            mainCanvas,
+            mainCtx,
+            overlayCanvas,
+            overlayCtx
+        });
+        // Undo/redo stacks live inside the history module's closure; the
+        // env object hands it accessor closures over the module globals it
+        // restores (frames/layers/current indices) plus the exact
+        // post-restore refresh sequence undo/redo always ran.
+        this._history = createHistory({
+            getFrames: () => frames,
+            setFrames: (value) => { frames = value; },
+            getLayers: () => layers,
+            setLayers: (value) => { layers = value; },
+            getCurrentFrame: () => currentFrame,
+            setCurrentFrame: (value) => { currentFrame = value; },
+            getCurrentLayer: () => currentLayer,
+            setCurrentLayer: (value) => { currentLayer = value; },
+            getActiveLayerContext: () => this.getActiveLayerContext(),
+            createCanvas,
+            onAfterRestore: () => {
+                this.renderCurrentFrame();
+                this.updateUI();
+            }
+        });
+        // Selection subsystem. The selection state stays in the module
+        // globals (event handlers and frame/layer ops here read them
+        // directly); the manager reaches them through these accessors.
+        this._selection = createSelectionManager({
+            mainCanvas,
+            overlayCtx,
+            get activeSelection() { return activeSelection; },
+            set activeSelection(value) { activeSelection = value; },
+            get selectionInteraction() { return selectionInteraction; },
+            set selectionInteraction(value) { selectionInteraction = value; },
+            get selectionClipboard() { return selectionClipboard; },
+            set selectionClipboard(value) { selectionClipboard = value; },
+            getSelectionMode: () => selectionMode,
+            getSelectionAntialias: () => selectionAntialias,
+            getSelectionFeather: () => selectionFeather,
+            getFillTolerance: () => fillTolerance,
+            getActiveLayerContext: () => this.getActiveLayerContext(),
+            clearOverlay: () => this.clearOverlay(),
+            applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
+            saveState: () => this.saveState(),
+            renderCurrentFrame: () => this.renderCurrentFrame()
+        });
         this.initializeCanvas();
         this.initializeFrames();
         this.initializeLayers();
@@ -130,6 +329,10 @@ class WASRTK {
     }
 
     getReferenceApi() {
+        return this._referenceApi;
+    }
+
+    buildReferenceApi() {
         return {
             getImage: () => referenceImage,
             setImage: (image) => { referenceImage = image; },
@@ -164,10 +367,6 @@ class WASRTK {
 
     getBrushSize() {
         return brushSize;
-    }
-
-    getBrushShape() {
-        return brushShape;
     }
 
     getPenLastDrawnPoint() {
@@ -220,10 +419,6 @@ class WASRTK {
             x: start.x + Math.cos(snappedAngle) * distance,
             y: start.y + Math.sin(snappedAngle) * distance
         };
-    }
-
-    isAntialiasingEnabled() {
-        return antialiasingEnabled;
     }
 
     clearOverlay() {
@@ -322,6 +517,22 @@ class WASRTK {
         return layer.ctx;
     }
 
+    // Resolves the current frame/layer/context triple used by most
+    // draw/selection/history operations. Returns null when there is no
+    // active layer to draw on, or (unless allowLocked) when it is locked.
+    getActiveLayerContext({ allowLocked = false } = {}) {
+        const frame = frames[currentFrame];
+        if (!frame) {
+            return null;
+        }
+        const layer = frame.layers[currentLayer];
+        if (!layer || (!allowLocked && layer.locked)) {
+            return null;
+        }
+        const ctx = this.getLayerContext(layer);
+        return { frame, layer, ctx };
+    }
+
     // Helper function to update smoothing on all canvases
     updateAllCanvasSmoothing() {
         this.applyImageSmoothing(mainCtx);
@@ -361,29 +572,20 @@ class WASRTK {
         };
 
         // Create initial layer for the frame
+        const { canvas: initialLayerCanvas } = createLayerCanvas({
+            width: mainCanvas.width,
+            height: mainCanvas.height,
+            transparent: hasTransparentBackground,
+            backgroundColor: projectBackgroundColor,
+            applySmoothing: (ctx) => this.applyImageSmoothing(ctx)
+        });
         const initialLayer = {
             id: 0,
             name: 'Background',
             visible: true,
             locked: false,
-            canvas: document.createElement('canvas')
+            canvas: initialLayerCanvas
         };
-        initialLayer.canvas.width = mainCanvas.width;
-        initialLayer.canvas.height = mainCanvas.height;
-        const layerCtx = this.getLayerContext(initialLayer);
-        
-        // Apply smoothing settings
-        this.applyImageSmoothing(layerCtx);
-        
-        // Set background based on transparent background setting
-        if (hasTransparentBackground) {
-            // Clear canvas for transparent background
-            layerCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
-        } else {
-            // Set solid background color
-            layerCtx.fillStyle = '#ffffff';
-            layerCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
-        }
 
         initialFrame.layers.push(initialLayer);
         frames.push(initialFrame);
@@ -398,487 +600,60 @@ class WASRTK {
     }
 
     initializePaletteUI() {
-        const paletteSelect = document.getElementById('paletteSelect');
-        if (!paletteSelect) {
-            return;
-        }
-
-        this.refreshPaletteSelect();
-
-        if (!COLOR_PALETTES[selectedPalette]) {
-            selectedPalette = 'lospec-journey';
-        }
-        paletteSelect.value = selectedPalette;
-        this.renderPalettePresets(selectedPalette);
+        this._paletteUI.initializePaletteUI();
     }
 
     refreshPaletteSelect() {
-        const paletteSelect = document.getElementById('paletteSelect');
-        if (!paletteSelect) {
-            return;
-        }
-
-        paletteSelect.innerHTML = '';
-        Object.entries(COLOR_PALETTES).forEach(([id, palette]) => {
-            const option = document.createElement('option');
-            option.value = id;
-            option.textContent = palette.label;
-            paletteSelect.append(option);
-        });
+        this._paletteUI.refreshPaletteSelect();
     }
 
     async loadCustomPalettesFromConfig() {
-        const payload = await ipcRenderer.invoke('load-palettes-config');
-        this.mergeCustomPalettes(payload.palettes || {});
+        await this._paletteUI.loadCustomPalettesFromConfig();
     }
 
     mergeCustomPalettes(customPalettes) {
-        Object.entries(COLOR_PALETTES).forEach(([id]) => {
-            if (!BUILTIN_PALETTE_IDS.has(id)) {
-                delete COLOR_PALETTES[id];
-            }
-        });
-
-        Object.entries(customPalettes).forEach(([id, palette]) => {
-            if (!palette || !palette.label || !Array.isArray(palette.colors)) {
-                return;
-            }
-            const colors = dedupeColors(palette.colors);
-            if (!colors.length) {
-                return;
-            }
-            COLOR_PALETTES[id] = {
-                label: String(palette.label),
-                colors
-            };
-        });
-
-        this.refreshPaletteSelect();
-        if (!COLOR_PALETTES[selectedPalette]) {
-            selectedPalette = 'lospec-journey';
-        }
-        document.getElementById('paletteSelect').value = selectedPalette;
-        this.renderPalettePresets(selectedPalette);
+        this._paletteUI.mergeCustomPalettes(customPalettes);
     }
 
     renderPalettePresets(paletteId) {
-        const palette = COLOR_PALETTES[paletteId] || COLOR_PALETTES['lospec-journey'];
-        const presetsContainer = document.getElementById('colorPresets');
-        if (!presetsContainer) {
-            return;
-        }
-
-        presetsContainer.innerHTML = '';
-        palette.colors.forEach((color) => {
-            const swatch = document.createElement('button');
-            swatch.type = 'button';
-            swatch.className = 'color-preset';
-            swatch.style.background = color;
-            swatch.dataset.color = color;
-            swatch.title = color;
-            presetsContainer.append(swatch);
-        });
+        this._paletteUI.renderPalettePresets(paletteId);
     }
 
     setupEventListeners() {
-        // Tool selection
-        document.querySelectorAll('.tool-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.selectTool(e.target.closest('.tool-btn').dataset.tool);
-            });
-        });
-
-        // Color picker
-        document.getElementById('colorPicker').addEventListener('change', (e) => {
-            this.setColor(e.target.value);
-        });
-
-        const paletteSelect = document.getElementById('paletteSelect');
-        paletteSelect.addEventListener('change', (e) => {
-            selectedPalette = e.target.value;
-            this.renderPalettePresets(selectedPalette);
-        });
-
-        const presetsContainer = document.getElementById('colorPresets');
-        presetsContainer.addEventListener('click', (e) => {
-            const preset = e.target.closest('.color-preset');
-            if (!preset) {
-                return;
-            }
-            this.setColor(preset.dataset.color);
-            document.getElementById('colorPicker').value = preset.dataset.color;
-        });
-
-        document.getElementById('openPaletteEditorBtn').addEventListener('click', async () => {
-            await ipcRenderer.invoke('open-palette-editor-window');
-        });
-
-        // Brush size
-        document.getElementById('brushSizeSlider').addEventListener('input', (e) => {
-            this.setBrushSize(parseInt(e.target.value));
-        });
-
-        // Opacity control
-        document.getElementById('opacitySlider').addEventListener('input', (e) => {
-            this.setOpacity(parseInt(e.target.value));
-        });
-
-        // Fill tolerance control
-        document.getElementById('fillToleranceSlider').addEventListener('input', (e) => {
-            fillTolerance = parseInt(e.target.value);
-            document.getElementById('fillToleranceValue').textContent = fillTolerance;
-        });
-
-        document.getElementById('brushShapeSelect').addEventListener('change', (e) => {
-            this.setBrushShape(e.target.value);
-        });
-
-        // Antialiasing toggle
-        document.getElementById('antialiasingEnabled').addEventListener('change', (e) => {
-            antialiasingEnabled = e.target.checked;
-            this.updateAllCanvasSmoothing();
-            this.updateBrushPreview();
-            this.renderCurrentFrame();
-            this.updateStatusBar();
-        });
-
-        // Canvas events
-        mainCanvas.addEventListener('mousedown', (e) => {
-            // Only respond to left mouse button (button 0)
-            if (e.button !== 0) return;
-            
-            // Check if we're dragging reference image (Ctrl/Cmd + click)
-            if ((e.ctrlKey || e.metaKey) && referenceImage && referenceVisible) {
-                const mousePos = this.screenToCanvas(e.clientX, e.clientY);
-                const scaledWidth = referenceImage.width * referenceScale;
-                const scaledHeight = referenceImage.height * referenceScale;
-                
-                // Check if mouse is over reference image
-                if (mousePos.x >= referenceX && mousePos.x <= referenceX + scaledWidth &&
-                    mousePos.y >= referenceY && mousePos.y <= referenceY + scaledHeight) {
-                    isDraggingReference = true;
-                    lastMousePos = mousePos;
-                    document.querySelector('.canvas-wrapper').classList.add('dragging-reference');
-                    e.preventDefault();
-                    return;
-                }
-            }
-            
-            this.startDrawing(e);
-        });
-        
-        const handleCanvasInteractionMove = (e) => {
-            // Handle reference image dragging
-            if (isDraggingReference && referenceImage && referenceVisible) {
-                const mousePos = this.screenToCanvas(e.clientX, e.clientY);
-                if (lastMousePos) {
-                    referenceX += mousePos.x - lastMousePos.x;
-                    referenceY += mousePos.y - lastMousePos.y;
-                    lastMousePos = mousePos;
-                    userModifiedReference = true; // Mark as user modified
-                    this.updateReferencePreview();
-                    this.renderCurrentFrame();
-                }
-                return;
-            }
-
-            this.updateEyedropperZoomPreview(e);
-            
-            this.draw(e);
-        };
-
-        mainCanvas.addEventListener('mousemove', handleCanvasInteractionMove);
-        document.addEventListener('mousemove', (e) => {
-            if (!isDrawing && !isDraggingReference) {
-                return;
-            }
-
-            if (e.target === mainCanvas) {
-                return;
-            }
-
-            handleCanvasInteractionMove(e);
-        });
-        
-        mainCanvas.addEventListener('mouseup', (e) => {
-            if (isDraggingReference) {
-                isDraggingReference = false;
-                lastMousePos = null;
-                document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
-                return;
-            }
-            this.stopDrawing(e);
-        });
-
-        document.addEventListener('mouseup', (e) => {
-            if (e.button !== 0) {
-                return;
-            }
-
-            if (e.target === mainCanvas) {
-                return;
-            }
-
-            if (isDraggingReference) {
-                isDraggingReference = false;
-                lastMousePos = null;
-                document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
-                return;
-            }
-
-            this.stopDrawing(e);
-        });
-        
-        mainCanvas.addEventListener('mouseleave', (e) => {
-            if (isDraggingReference) {
-                isDraggingReference = false;
-                lastMousePos = null;
-                document.querySelector('.canvas-wrapper').classList.remove('dragging-reference');
-                return;
-            }
-        });
-
-        // Mouse position tracking
-        mainCanvas.addEventListener('mousemove', (e) => {
-            const pixelCoords = this.screenToCanvas(e.clientX, e.clientY);
-            document.getElementById('mousePosition').textContent = `${pixelCoords.x}, ${pixelCoords.y}`;
-            this.updateBrushSizePreview(e.clientX, e.clientY);
-            this.updateEyedropperZoomPreview(e);
-        });
-
-        // Hide brush preview when mouse leaves canvas
-        mainCanvas.addEventListener('mouseleave', () => {
-            this.hideBrushSizePreview();
-            this.hideEyedropperZoomPreview();
-        });
-
-        // Timeline events
-        document.getElementById('addFrameBtn').addEventListener('click', () => this.addFrame());
-        document.getElementById('duplicateFrameBtn').addEventListener('click', () => this.duplicateFrame());
-        document.getElementById('moveFrameLeftBtn').addEventListener('click', () => this.moveFrameLeft());
-        document.getElementById('moveFrameRightBtn').addEventListener('click', () => this.moveFrameRight());
-        document.getElementById('deleteFrameBtn').addEventListener('click', () => this.deleteFrame());
-
-        // Animation controls
-        document.getElementById('playPauseBtn').addEventListener('click', () => this.toggleAnimation());
-
-        // FPS control
-        document.getElementById('fpsSlider').addEventListener('input', (e) => {
-            document.getElementById('fpsValue').textContent = e.target.value;
-        });
-
-        // Zoom controls
-        document.getElementById('zoomInBtn').addEventListener('click', () => this.zoomIn());
-        document.getElementById('zoomOutBtn').addEventListener('click', () => this.zoomOut());
-        document.getElementById('resetZoomBtn').addEventListener('click', () => this.resetZoom());
-        
-        // Zoom slider
-        document.getElementById('zoomSlider').addEventListener('input', (e) => {
-            const zoomPercentage = parseInt(e.target.value);
-            zoom = zoomPercentage / 100;
-            this.updateZoom();
-        });
-        
-        // Zoom input
-        document.getElementById('zoomInput').addEventListener('input', (e) => {
-            const zoomPercentage = parseInt(e.target.value);
-            if (zoomPercentage >= 10 && zoomPercentage <= 2000) {
-                zoom = zoomPercentage / 100;
-                this.updateZoom();
-            }
-        });
-        
-        // Handle Enter key on zoom input
-        document.getElementById('zoomInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.target.blur(); // Remove focus
-            }
-        });
-
-        // Layer controls
-        document.getElementById('addLayerBtn').addEventListener('click', () => this.addLayer());
-        document.getElementById('deleteLayerBtn').addEventListener('click', () => this.deleteLayer());
-        document.getElementById('moveLayerUpBtn').addEventListener('click', () => this.moveLayerUp());
-        document.getElementById('moveLayerDownBtn').addEventListener('click', () => this.moveLayerDown());
-        document.getElementById('flattenLayerBtn').addEventListener('click', () => this.flattenLayer());
-
-        // Onion skinning
-        document.getElementById('onionSkinningEnabled').addEventListener('change', (e) => {
-            onionSkinningEnabled = e.target.checked;
-            this.renderCurrentFrame();
-        });
-
-        document.getElementById('onionSkinningRange').addEventListener('input', (e) => {
-            onionSkinningRange = parseInt(e.target.value);
-            document.getElementById('onionSkinningValue').textContent = e.target.value;
-            this.renderCurrentFrame();
-        });
-
-        // Reference image
-        document.getElementById('loadReferenceBtn').addEventListener('click', () => this.loadReferenceImage());
-        document.getElementById('screenShareBtn').addEventListener('click', () => this.startScreenShare());
-        reference.bindReferenceSettingsEvents(this, this.getReferenceApi());
-
-        // Modal events
-        document.getElementById('createProjectBtn').addEventListener('click', () => this.createNewProject());
-        document.getElementById('cancelNewProjectBtn').addEventListener('click', () => this.hideModal('newProjectModal'));
-
-        // Transparent background checkbox interaction
-        document.getElementById('transparentBackground').addEventListener('change', (e) => {
-            const backgroundColorInput = document.getElementById('backgroundColor');
-            backgroundColorInput.disabled = e.target.checked;
-            if (e.target.checked) {
-                backgroundColorInput.style.opacity = '0.5';
-            } else {
-                backgroundColorInput.style.opacity = '1';
-            }
-        });
-
-        // Mouse wheel zoom (Ctrl/Cmd + scroll)
-        mainCanvas.addEventListener('wheel', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                const delta = e.deltaY > 0 ? -1 : 1;
-                const zoomFactor = delta > 0 ? 1.1 : 0.9;
-                
-                this.zoomAtPoint(zoomFactor, e.clientX, e.clientY);
-            }
-        });
-
-        const canvasWrapper = document.querySelector('.canvas-wrapper');
-
-        // Also add wheel listener to canvas wrapper for better coverage
-        canvasWrapper.addEventListener('wheel', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                const delta = e.deltaY > 0 ? -1 : 1;
-                const zoomFactor = delta > 0 ? 1.1 : 0.9;
-                
-                this.zoomAtPoint(zoomFactor, e.clientX, e.clientY);
-            }
-        });
-
-
-        // Undo/Redo buttons
-        document.getElementById('undoBtn').addEventListener('click', () => this.undo());
-        document.getElementById('redoBtn').addEventListener('click', () => this.redo());
-
-        // Panning with middle mouse button
-        canvasWrapper.addEventListener('mousedown', (e) => {
-            if (e.button === 1) { // Middle mouse button
-                isPanning = true;
-                panStartPos = { x: e.clientX, y: e.clientY };
-                panStartScroll = { left: canvasWrapper.scrollLeft, top: canvasWrapper.scrollTop };
-                canvasWrapper.classList.add('panning');
-                e.preventDefault();
-            }
-        });
-
-        canvasWrapper.addEventListener('mousemove', (e) => {
-            if (isPanning) {
-                const dx = e.clientX - panStartPos.x;
-                const dy = e.clientY - panStartPos.y;
-                canvasWrapper.scrollLeft = panStartScroll.left - dx;
-                canvasWrapper.scrollTop = panStartScroll.top - dy;
-                e.preventDefault();
-            }
-        });
-
-        canvasWrapper.addEventListener('mouseup', (e) => {
-            if (e.button === 1 && isPanning) {
-                isPanning = false;
-                canvasWrapper.classList.remove('panning');
-                e.preventDefault();
-            }
-        });
-
-        canvasWrapper.addEventListener('mouseleave', () => {
-            if (isPanning) {
-                isPanning = false;
-                canvasWrapper.classList.remove('panning');
-            }
-        });
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && activeSelection) {
-                e.preventDefault();
-                this.copySelectionToClipboard();
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x' && activeSelection) {
-                e.preventDefault();
-                this.copySelectionToClipboard({ cut: true });
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-                e.preventDefault();
-                this.pasteSelectionFromClipboard();
-                return;
-            }
-
-            if ((e.key === 'Delete' || e.key === 'Backspace') && activeSelection) {
-                e.preventDefault();
-                this.copySelectionToClipboard({ cut: true });
-                return;
-            }
-
-            if (e.key === 'Enter' && activeSelection?.detached) {
-                e.preventDefault();
-                this.commitDetachedSelection();
-                this.clearSelection();
-                return;
-            }
-
-            if (e.key === 'Escape' && activeSelection) {
-                e.preventDefault();
-                this.clearSelection();
-                return;
-            }
-
-            const nudgeMap = {
-                ArrowUp: { x: 0, y: -1 },
-                ArrowDown: { x: 0, y: 1 },
-                ArrowLeft: { x: -1, y: 0 },
-                ArrowRight: { x: 1, y: 0 }
-            };
-            if (activeSelection && nudgeMap[e.key]) {
-                e.preventDefault();
-                const step = e.shiftKey ? 10 : 1;
-                const nudge = nudgeMap[e.key];
-                this.detachSelectionFromLayer();
-                activeSelection.x = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, activeSelection.x + (nudge.x * step)));
-                activeSelection.y = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, activeSelection.y + (nudge.y * step)));
-                this.drawSelectionOutline(activeSelection, { showPreview: true });
-                return;
-            }
-
-            const toolByShortcut = {
-                '1': 'pen',
-                '2': 'line',
-                '3': 'rectangle',
-                '4': 'circle',
-                '5': 'fill',
-                '6': 'eraser',
-                '7': 'selection',
-                '8': 'eyedropper'
-            };
-            if (toolByShortcut[e.key]) {
-                this.selectTool(toolByShortcut[e.key]);
-                return;
-            }
-
-            // Prevent default behavior for certain keys
-            if (e.key === ' ') {
-                e.preventDefault(); // Prevent page scroll
-                this.toggleAnimation();
-            }
+        bindAppEvents(this, {
+            getSelectedPalette: () => selectedPalette,
+            setSelectedPalette: (value) => { selectedPalette = value; },
+            setFillTolerance: (value) => { fillTolerance = value; },
+            setFillContiguous: (value) => { fillContiguous = value; },
+            setFillSampleAllLayers: (value) => { fillSampleAllLayers = value; },
+            setSelectionMode: (value) => { selectionMode = value; },
+            setSelectionAntialias: (value) => { selectionAntialias = value; },
+            setSelectionFeather: (value) => { selectionFeather = value; },
+            setPressureSensitivityEnabled: (value) => { pressureSensitivityEnabled = value; },
+            setPressureAffectsSize: (value) => { pressureAffectsSize = value; },
+            setPressureAffectsFlow: (value) => { pressureAffectsFlow = value; },
+            setAntialiasingEnabled: (value) => { antialiasingEnabled = value; },
+            getIsDraggingReference: () => isDraggingReference,
+            setIsDraggingReference: (value) => { isDraggingReference = value; },
+            getLastMousePos: () => lastMousePos,
+            setLastMousePos: (value) => { lastMousePos = value; },
+            getIsDrawing: () => isDrawing,
+            getCurrentTool: () => currentTool,
+            getZoom: () => zoom,
+            setZoom: (value) => { zoom = value; },
+            setOnionSkinningEnabled: (value) => { onionSkinningEnabled = value; },
+            setOnionSkinningRange: (value) => { onionSkinningRange = value; },
+            setFps: (value) => { fps = value; },
+            getIsPanning: () => isPanning,
+            setIsPanning: (value) => { isPanning = value; },
+            getPanStartPos: () => panStartPos,
+            setPanStartPos: (value) => { panStartPos = value; },
+            getPanStartScroll: () => panStartScroll,
+            setPanStartScroll: (value) => { panStartScroll = value; },
+            getActiveSelection: () => activeSelection,
+            getSelectionInteraction: () => selectionInteraction,
+            setSelectionInteraction: (value) => { selectionInteraction = value; },
+            mainCanvas
         });
     }
 
@@ -930,15 +705,32 @@ class WASRTK {
         
         // Show/hide fill tolerance slider
         const toleranceSection = document.getElementById('fillToleranceSection');
-        if (tool === 'fill') {
+        if (tool === 'fill' || (tool === 'selection' && selectionMode === 'magic-wand')) {
             toleranceSection.style.display = 'block';
         } else {
             toleranceSection.style.display = 'none';
         }
+        document.querySelectorAll('.fill-only-option').forEach((option) => {
+            option.style.display = tool === 'fill' ? 'flex' : 'none';
+        });
+
+        const selectionModeSection = document.getElementById('selectionModeSection');
+        selectionModeSection.style.display = tool === 'selection' ? 'flex' : 'none';
+        this.updateSelectionHint();
 
         const brushShapeControl = document.querySelector('.brush-shape-control');
         const brushShapeTools = ['pen', 'line', 'eraser'];
         brushShapeControl.style.display = brushShapeTools.includes(tool) ? 'flex' : 'none';
+
+        const brushPresetControl = document.querySelector('.brush-preset-control');
+        const brushPresetTools = ['pen', 'eraser'];
+        brushPresetControl.style.display = brushPresetTools.includes(tool) ? 'flex' : 'none';
+
+        document.querySelectorAll('.brush-advanced-control').forEach((control) => {
+            control.style.display = brushPresetTools.includes(tool) ? 'grid' : 'none';
+        });
+        const pressureControls = document.querySelector('.pressure-controls');
+        pressureControls.style.display = brushPresetTools.includes(tool) ? 'flex' : 'none';
         
         // Hide brush preview if switching away from pen/eraser
         if (tool !== 'pen' && tool !== 'eraser') {
@@ -952,1587 +744,378 @@ class WASRTK {
         if (tool !== 'selection') {
             selectionInteraction = null;
             if (activeSelection) {
-                activeSelection = null;
-                this.clearOverlay();
+                this.clearSelection({ commitDetached: false });
             }
         }
         
         this.updateStatusBar();
+    }
+
+    updateSelectionHint() {
+        const hint = document.getElementById('selectionHint');
+        if (!hint) {
+            return;
+        }
+
+        const hints = {
+            rectangle: 'Drag to create a rectangular selection. Drag inside a selection to move it; Enter commits, Escape cancels.',
+            'magic-wand': 'Click a color region to select it. Adjust Tolerance above; Enter commits detached pixels, Escape cancels.',
+            lasso: 'Drag to draw a freeform selection. Release to finish; Enter commits detached pixels, Escape cancels.',
+            polygon: 'Click to add polygon points. Press Enter or click near the first point to finish; Escape cancels.'
+        };
+        hint.textContent = hints[selectionMode] || hints.rectangle;
     }
 
     setColor(color) {
-        currentColor = color;
-        this.updateBrushPreview();
-        this.updateStatusBar();
-        
-        // Update canvas brush preview if currently visible
-        const brushPreview = document.getElementById('canvasBrushPreview');
-        if (brushPreview.style.display !== 'none' && currentTool === 'pen') {
-            brushPreview.style.backgroundColor = currentColor;
-            brushPreview.style.borderColor = currentColor;
-        }
-    }
-
-    getColorAtCanvasPosition(x, y) {
-        const sampleX = Math.max(0, Math.min(mainCanvas.width - 1, Math.round(x)));
-        const sampleY = Math.max(0, Math.min(mainCanvas.height - 1, Math.round(y)));
-        const pixel = mainCtx.getImageData(sampleX, sampleY, 1, 1).data;
-        return `#${[pixel[0], pixel[1], pixel[2]].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+        this._brushSettings.setColor(color);
     }
 
     pickColorAt(x, y) {
-        const pickedColor = this.getColorAtCanvasPosition(x, y);
-        this.setColor(pickedColor);
-        document.getElementById('colorPicker').value = pickedColor;
-        return pickedColor;
+        return this._brushSettings.pickColorAt(x, y);
     }
 
     updateEyedropperZoomPreview(e) {
-        if (currentTool !== 'eyedropper') {
-            this.hideEyedropperZoomPreview();
-            return;
-        }
-
-        const lens = document.getElementById('eyedropperZoomLens');
-        const zoomCanvas = document.getElementById('eyedropperZoomCanvas');
-        const zoomLabel = document.getElementById('eyedropperZoomLabel');
-        if (!lens || !zoomCanvas || !zoomLabel) {
-            return;
-        }
-
-        const coords = this.screenToCanvas(e.clientX, e.clientY);
-        const liveHoverColor = this.getColorAtCanvasPosition(coords.x, coords.y);
-        const zoomCtx = zoomCanvas.getContext('2d');
-        const sampleSize = 11;
-        const halfSize = Math.floor(sampleSize / 2);
-        const sampleX = Math.max(0, Math.min(mainCanvas.width - sampleSize, Math.round(coords.x) - halfSize));
-        const sampleY = Math.max(0, Math.min(mainCanvas.height - sampleSize, Math.round(coords.y) - halfSize));
-
-        zoomCtx.save();
-        zoomCtx.imageSmoothingEnabled = false;
-        zoomCtx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
-        zoomCtx.drawImage(mainCanvas, sampleX, sampleY, sampleSize, sampleSize, 0, 0, zoomCanvas.width, zoomCanvas.height);
-
-        const center = zoomCanvas.width / 2;
-        zoomCtx.strokeStyle = '#ff3366';
-        zoomCtx.lineWidth = 1;
-        zoomCtx.beginPath();
-        zoomCtx.moveTo(center, 0);
-        zoomCtx.lineTo(center, zoomCanvas.height);
-        zoomCtx.moveTo(0, center);
-        zoomCtx.lineTo(zoomCanvas.width, center);
-        zoomCtx.stroke();
-        zoomCtx.restore();
-
-        const wrapperRect = document.querySelector('.canvas-wrapper').getBoundingClientRect();
-        const lensOffsetX = 20;
-        const lensOffsetY = 20;
-        let left = e.clientX - wrapperRect.left + lensOffsetX;
-        let top = e.clientY - wrapperRect.top + lensOffsetY;
-        const maxLeft = wrapperRect.width - lens.offsetWidth - 4;
-        const maxTop = wrapperRect.height - lens.offsetHeight - 4;
-        left = Math.max(4, Math.min(maxLeft, left));
-        top = Math.max(4, Math.min(maxTop, top));
-
-        lens.style.left = `${left}px`;
-        lens.style.top = `${top}px`;
-        lens.hidden = false;
-        zoomLabel.textContent = liveHoverColor;
+        this._brushSettings.updateEyedropperZoomPreview(e);
     }
 
     hideEyedropperZoomPreview() {
-        const lens = document.getElementById('eyedropperZoomLens');
-        if (lens) {
-            lens.hidden = true;
-        }
+        this._brushSettings.hideEyedropperZoomPreview();
     }
 
-    setBrushSize(size) {
-        brushSize = size;
-        document.getElementById('brushSizeValue').textContent = size + 'px';
-        this.updateBrushPreview();
-        this.updateStatusBar();
-        
-        // Update brush size preview if currently visible
-        const brushPreview = document.getElementById('canvasBrushPreview');
-        if (brushPreview.style.display !== 'none' && (currentTool === 'pen' || currentTool === 'eraser')) {
-            // Trigger a mouse move event to update the brush preview
-            const event = new MouseEvent('mousemove', {
-                clientX: parseInt(brushPreview.style.left) || 0,
-                clientY: parseInt(brushPreview.style.top) || 0
-            });
-            mainCanvas.dispatchEvent(event);
-        }
+    // Re-dispatches a synthetic mousemove at the canvas brush preview's
+    // current position so it redraws with up-to-date brush settings, but
+    // only while it is actually visible over the canvas.
+    refreshBrushPreviewFromCursor() {
+        this._brushSettings.refreshBrushPreviewFromCursor();
     }
 
-    setBrushShape(shape) {
-        brushShape = shape === 'square' ? 'square' : 'circle';
-        document.getElementById('brushShapeSelect').value = brushShape;
-        this.updateBrushPreview();
+    // `silent` skips the preview/status-bar/cursor refresh -- used by
+    // loadProject, which already performs an equivalent refresh once for
+    // the whole loaded project instead of once per setting.
+    setBrushSize(size, options = {}) {
+        this._brushSettings.setBrushSize(size, options);
+    }
 
-        const brushPreview = document.getElementById('canvasBrushPreview');
-        if (brushPreview.style.display !== 'none' && (currentTool === 'pen' || currentTool === 'eraser')) {
-            const event = new MouseEvent('mousemove', {
-                clientX: parseInt(brushPreview.style.left) || 0,
-                clientY: parseInt(brushPreview.style.top) || 0
-            });
-            mainCanvas.dispatchEvent(event);
-        }
+    setBrushShape(shape, options = {}) {
+        this._brushSettings.setBrushShape(shape, options);
+    }
+
+    setBrushPreset(preset, options = {}) {
+        this._brushSettings.setBrushPreset(preset, options);
+    }
+
+    setBrushFlow(flowPercent) {
+        this._brushSettings.setBrushFlow(flowPercent);
+    }
+
+    setBrushSpacing(spacingPercent) {
+        this._brushSettings.setBrushSpacing(spacingPercent);
     }
 
     setOpacity(opacity) {
-        currentOpacity = opacity / 100;
-        this.updateBrushPreview();
-        this.updateStatusBar();
-        // Update opacity value in UI
-        document.getElementById('opacityValue').textContent = `${opacity}%`;
-        // Update canvas brush preview if currently visible
-        const brushPreview = document.getElementById('canvasBrushPreview');
-        if (brushPreview.style.display !== 'none' && currentTool === 'pen') {
-            brushPreview.style.opacity = opacity / 100;
-        }
+        this._brushSettings.setOpacity(opacity);
     }
 
     updateBrushPreview() {
-        const previewCanvas = document.getElementById('brushPreview');
-        const ctx = previewCanvas.getContext('2d');
-        
-        // Clear the preview
-        ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-        
-        // Set background
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
-        
-        // Draw grid pattern
-        ctx.strokeStyle = '#e0e0e0';
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= previewCanvas.width; i += 5) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, previewCanvas.height);
-            ctx.stroke();
-        }
-        for (let i = 0; i <= previewCanvas.height; i += 5) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(previewCanvas.width, i);
-            ctx.stroke();
-        }
-        
-        this.applyImageSmoothing(ctx);
-
-        // Draw brush preview
-        ctx.fillStyle = currentColor;
-        ctx.globalAlpha = currentOpacity;
-        const centerX = previewCanvas.width / 2;
-        const centerY = previewCanvas.height / 2;
-        
-        if (brushSize === 1) {
-            ctx.fillRect(Math.round(centerX), Math.round(centerY), 1, 1);
-        } else if (brushShape === 'square') {
-            const size = Math.round(brushSize);
-            const offset = Math.floor(size / 2);
-            ctx.fillRect(Math.round(centerX) - offset, Math.round(centerY) - offset, size, size);
-        } else {
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, brushSize / 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        
+        this._brushSettings.updateBrushPreview();
     }
 
-    normalizeSelectionBounds(start, end, { keepSquare = false } = {}) {
-        let endX = end.x;
-        let endY = end.y;
-
-        if (keepSquare) {
-            const dx = end.x - start.x;
-            const dy = end.y - start.y;
-            const side = Math.max(Math.abs(dx), Math.abs(dy));
-            endX = start.x + side * Math.sign(dx || 1);
-            endY = start.y + side * Math.sign(dy || 1);
-        }
-
-        const x = Math.min(start.x, endX);
-        const y = Math.min(start.y, endY);
-        const width = Math.abs(endX - start.x);
-        const height = Math.abs(endY - start.y);
-        return {
-            x: Math.round(x),
-            y: Math.round(y),
-            width: Math.round(width),
-            height: Math.round(height)
+    applySelectedTransformAction() {
+        const action = document.getElementById('transformActionSelect')?.value;
+        const angle = 12 * (Math.PI / 180);
+        const actions = {
+            'flip-horizontal': { flipX: true },
+            'flip-vertical': { flipY: true },
+            'rotate-90': { rotate90: true },
+            'scale-up': { scaleX: 1.25, scaleY: 1.25 },
+            'scale-down': { scaleX: 0.8, scaleY: 0.8 },
+            'skew-x': { skewX: angle },
+            'skew-y': { skewY: angle }
         };
+        this.applyTransformAction(actions[action] || actions['flip-horizontal']);
     }
 
-    drawSelectionOutline(bounds, { showPreview = false } = {}) {
-        this.clearOverlay();
-        if (showPreview && bounds.imageData) {
-            overlayCtx.putImageData(bounds.imageData, bounds.x, bounds.y);
-        }
-        overlayCtx.save();
-        overlayCtx.strokeStyle = '#1f9eff';
-        overlayCtx.setLineDash([5, 3]);
-        overlayCtx.lineWidth = 1;
-        overlayCtx.strokeRect(bounds.x + 0.5, bounds.y + 0.5, bounds.width, bounds.height);
-        overlayCtx.restore();
-    }
-
+    // Selection subsystem delegators (bodies live in selection-manager.js;
+    // see the constructor for the env it closes over).
     startSelectionInteraction(coords) {
-        if (activeSelection &&
-            coords.x >= activeSelection.x &&
-            coords.x <= activeSelection.x + activeSelection.width &&
-            coords.y >= activeSelection.y &&
-            coords.y <= activeSelection.y + activeSelection.height) {
-            this.detachSelectionFromLayer();
-            selectionInteraction = {
-                mode: 'move',
-                start: coords,
-                originalX: activeSelection.x,
-                originalY: activeSelection.y
-            };
-            return;
-        }
-
-        activeSelection = null;
-        selectionInteraction = {
-            mode: 'select',
-            start: coords,
-            current: coords
-        };
-        this.drawSelectionOutline(this.normalizeSelectionBounds(coords, coords));
+        return this._selection.startSelectionInteraction(coords);
     }
 
-    updateSelectionInteraction(coords, { keepSquare = false } = {}) {
-        if (!selectionInteraction) {
-            return;
-        }
-
-        if (selectionInteraction.mode === 'select') {
-            selectionInteraction.current = coords;
-            const bounds = this.normalizeSelectionBounds(selectionInteraction.start, coords, { keepSquare });
-            this.drawSelectionOutline(bounds);
-            return;
-        }
-
-        if (selectionInteraction.mode === 'move' && activeSelection) {
-            const dx = Math.round(coords.x - selectionInteraction.start.x);
-            const dy = Math.round(coords.y - selectionInteraction.start.y);
-            activeSelection.x = selectionInteraction.originalX + dx;
-            activeSelection.y = selectionInteraction.originalY + dy;
-            this.drawSelectionOutline(activeSelection, { showPreview: true });
-        }
+    updateSelectionInteraction(coords, options) {
+        return this._selection.updateSelectionInteraction(coords, options);
     }
 
     finishSelectionInteraction() {
-        if (!selectionInteraction) {
-            return;
-        }
-
-        const frame = frames[currentFrame];
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) {
-            selectionInteraction = null;
-            return;
-        }
-        const ctx = this.getLayerContext(layer);
-
-        if (selectionInteraction.mode === 'select') {
-            const rawBounds = this.normalizeSelectionBounds(selectionInteraction.start, selectionInteraction.current);
-            const bounds = {
-                x: Math.max(0, rawBounds.x),
-                y: Math.max(0, rawBounds.y),
-                width: Math.min(mainCanvas.width - Math.max(0, rawBounds.x), rawBounds.width),
-                height: Math.min(mainCanvas.height - Math.max(0, rawBounds.y), rawBounds.height)
-            };
-            if (bounds.width < 1 || bounds.height < 1) {
-                activeSelection = null;
-                this.clearOverlay();
-            } else {
-                const imageData = ctx.getImageData(bounds.x, bounds.y, bounds.width, bounds.height);
-                activeSelection = {
-                    ...bounds,
-                    imageData,
-                    originalX: bounds.x,
-                    originalY: bounds.y,
-                    detached: false,
-                    sourceSnapshot: null
-                };
-                this.drawSelectionOutline(activeSelection);
-            }
-        } else if (selectionInteraction.mode === 'move' && activeSelection) {
-            this.drawSelectionOutline(activeSelection, { showPreview: true });
-        }
-
-        selectionInteraction = null;
+        return this._selection.finishSelectionInteraction();
     }
 
-    applySelectionMove(nextX, nextY, { saveState = true } = {}) {
-        if (!activeSelection) {
-            return;
-        }
-
-        const frame = frames[currentFrame];
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) {
-            return;
-        }
-        const ctx = this.getLayerContext(layer);
-        const targetX = Math.max(0, Math.min(mainCanvas.width - activeSelection.width, Math.round(nextX)));
-        const targetY = Math.max(0, Math.min(mainCanvas.height - activeSelection.height, Math.round(nextY)));
-
-        if (targetX === activeSelection.originalX && targetY === activeSelection.originalY) {
-            return;
-        }
-
-        if (saveState) {
-            this.saveState();
-        }
-
-        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-        ctx.putImageData(activeSelection.imageData, targetX, targetY);
-        activeSelection.x = targetX;
-        activeSelection.y = targetY;
-        activeSelection.originalX = targetX;
-        activeSelection.originalY = targetY;
-        this.drawSelectionOutline(activeSelection);
-        this.renderCurrentFrame();
-    }
-
-    detachSelectionFromLayer() {
-        if (!activeSelection || activeSelection.detached) {
-            return;
-        }
-        const frame = frames[currentFrame];
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) {
-            return;
-        }
-        const ctx = this.getLayerContext(layer);
-        activeSelection.sourceSnapshot = ctx.getImageData(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-        activeSelection.detached = true;
-        this.renderCurrentFrame();
+    clearSelection(options) {
+        return this._selection.clearSelection(options);
     }
 
     commitDetachedSelection() {
-        if (!activeSelection || !activeSelection.detached) {
-            return;
-        }
-        const frame = frames[currentFrame];
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) {
-            return;
-        }
-        const ctx = this.getLayerContext(layer);
-        if (activeSelection.sourceSnapshot) {
-            ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
-        }
-        this.saveState();
-        ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-        ctx.putImageData(activeSelection.imageData, activeSelection.x, activeSelection.y);
-        activeSelection.originalX = activeSelection.x;
-        activeSelection.originalY = activeSelection.y;
-        activeSelection.detached = false;
-        activeSelection.sourceSnapshot = null;
-        this.drawSelectionOutline(activeSelection);
-        this.renderCurrentFrame();
+        return this._selection.commitDetachedSelection();
     }
 
-    cancelDetachedSelection() {
-        if (!activeSelection || !activeSelection.detached) {
-            return;
-        }
-        const frame = frames[currentFrame];
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) {
-            return;
-        }
-        const ctx = this.getLayerContext(layer);
-        if (activeSelection.sourceSnapshot) {
-            ctx.putImageData(activeSelection.sourceSnapshot, activeSelection.originalX, activeSelection.originalY);
-        }
-        activeSelection.x = activeSelection.originalX;
-        activeSelection.y = activeSelection.originalY;
-        activeSelection.detached = false;
-        activeSelection.sourceSnapshot = null;
-        this.drawSelectionOutline(activeSelection);
-        this.renderCurrentFrame();
-    }
-
-    clearSelection({ commitDetached = false } = {}) {
-        if (activeSelection?.detached) {
-            if (commitDetached) {
-                this.commitDetachedSelection();
-            } else {
-                this.cancelDetachedSelection();
-            }
-        }
-        activeSelection = null;
-        selectionInteraction = null;
-        this.clearOverlay();
-    }
-
-    copySelectionToClipboard({ cut = false } = {}) {
-        if (!activeSelection) {
-            return;
-        }
-
-        selectionClipboard = {
-            width: activeSelection.width,
-            height: activeSelection.height,
-            imageData: new ImageData(new Uint8ClampedArray(activeSelection.imageData.data), activeSelection.width, activeSelection.height)
-        };
-
-        if (cut) {
-            const frame = frames[currentFrame];
-            const layer = frame.layers[currentLayer];
-            if (!layer || layer.locked) {
-                return;
-            }
-            this.saveState();
-            const ctx = this.getLayerContext(layer);
-            ctx.clearRect(activeSelection.originalX, activeSelection.originalY, activeSelection.width, activeSelection.height);
-            this.renderCurrentFrame();
-            this.clearSelection();
-        }
+    copySelectionToClipboard(options) {
+        return this._selection.copySelectionToClipboard(options);
     }
 
     pasteSelectionFromClipboard() {
-        if (!selectionClipboard) {
+        return this._selection.pasteSelectionFromClipboard();
+    }
+
+    createLassoSelectionFromPoints(points) {
+        return this._selection.createLassoSelectionFromPoints(points);
+    }
+
+    detachSelectionFromLayer() {
+        return this._selection.detachSelectionFromLayer();
+    }
+
+    clampSelectionPosition(selection, x, y) {
+        return this._selection.clampSelectionPosition(selection, x, y);
+    }
+
+    drawSelectionOutline(bounds, options) {
+        return this._selection.drawSelectionOutline(bounds, options);
+    }
+
+    drawLassoPreview(points, currentPoint) {
+        return this._selection.drawLassoPreview(points, currentPoint);
+    }
+
+    applyTransformAction(options) {
+        return this._selection.applyTransformAction(options);
+    }
+
+    getEventPressure(event) {
+        return this._brushSettings.getEventPressure(event);
+    }
+
+    getPressureAdjustedBrushSize() {
+        return this._brushSettings.getPressureAdjustedBrushSize();
+    }
+
+    getPressureAdjustedFlow() {
+        return this._brushSettings.getPressureAdjustedFlow();
+    }
+
+    updatePolygonHoverPreview(event) {
+        if (selectionInteraction?.mode !== 'polygon') {
             return;
         }
-        const frame = frames[currentFrame];
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) {
-            return;
-        }
-        this.saveState();
-        const ctx = this.getLayerContext(layer);
-        const pasteX = activeSelection
-            ? Math.max(0, Math.min(mainCanvas.width - selectionClipboard.width, activeSelection.x + 1))
-            : 0;
-        const pasteY = activeSelection
-            ? Math.max(0, Math.min(mainCanvas.height - selectionClipboard.height, activeSelection.y + 1))
-            : 0;
-        ctx.putImageData(selectionClipboard.imageData, pasteX, pasteY);
-        const refreshedData = ctx.getImageData(pasteX, pasteY, selectionClipboard.width, selectionClipboard.height);
-        activeSelection = {
-            x: pasteX,
-            y: pasteY,
-            width: selectionClipboard.width,
-            height: selectionClipboard.height,
-            imageData: refreshedData,
-            originalX: pasteX,
-            originalY: pasteY
-        };
-        this.drawSelectionOutline(activeSelection);
-        this.renderCurrentFrame();
+
+        const hoverCoords = this.screenToCanvas(event.clientX, event.clientY);
+        this.drawLassoPreview(selectionInteraction.points || [], hoverCoords);
     }
 
     // Drawing methods
     startDrawing(e) {
-        const tool = this.getCurrentToolConfig();
-
-        if (tool?.saveStateOnStart) {
-            this.saveState();
-        }
-
-        isDrawing = true;
-        const coords = this.screenToCanvas(e.clientX, e.clientY);
-        lastMousePos = coords; // Initialize last position
-        this.startShape = coords; // For shape tools
-        tool?.onStart?.(this, {
-            coords,
-            modifiers: {
-                keepSquare: e.shiftKey,
-                straightLine: e.shiftKey,
-                snapAngle: e.shiftKey && (e.ctrlKey || e.metaKey)
-            }
-        });
+        this._canvasEngine.startDrawing(e);
     }
 
     draw(e) {
-        if (!isDrawing) return;
-        const currentCoords = this.screenToCanvas(e.clientX, e.clientY);
-        const tool = this.getCurrentToolConfig();
-
-        tool?.onDraw?.(this, {
-            currentCoords,
-            lastMousePos,
-            startShape: this.startShape,
-            modifiers: {
-                keepSquare: e.shiftKey,
-                straightLine: e.shiftKey,
-                snapAngle: e.shiftKey && (e.ctrlKey || e.metaKey)
-            }
-        });
-
-        lastMousePos = currentCoords;
+        this._canvasEngine.draw(e);
     }
 
     stopDrawing(e) {
-        if (!isDrawing) return;
-        isDrawing = false;
-        const tool = this.getCurrentToolConfig();
-        tool?.onStop?.(this, {
-            startShape: this.startShape,
-            lastMousePos,
-            modifiers: {
-                keepSquare: Boolean(e?.shiftKey),
-                straightLine: Boolean(e?.shiftKey),
-                snapAngle: Boolean(e?.shiftKey && (e?.ctrlKey || e?.metaKey))
-            }
-        });
+        this._canvasEngine.stopDrawing(e);
+    }
 
-        lastMousePos = null;
-        this.startShape = null;
+    // Resolves the stroke-preview layer or the active unlocked layer as the
+    // drawing context, and wraps `draw(ctx, useStrokeLayer)` with the
+    // save/smoothing/alpha/restore + stroke-preview-or-render tail shared
+    // by drawPoint and drawLine's antialiased path. No-ops if there is no
+    // context to draw on.
+    withDrawContext(useStrokeCtx, draw) {
+        this._canvasEngine.withDrawContext(useStrokeCtx, draw);
     }
 
     drawPoint(x, y, useStrokeCtx = false) {
-        const useStrokeLayer = useStrokeCtx && strokeCtx && (currentTool === "pen" || currentTool === "eraser");
-        const ctx = useStrokeLayer ? strokeCtx : (() => {
-            const frame = frames[currentFrame];
-            const layer = frame.layers[currentLayer];
-            if (!layer || layer.locked) return null;
-            return this.getLayerContext(layer);
-        })();
-        if (!ctx) return;
-        ctx.save();
-        this.applyImageSmoothing(ctx);
-        ctx.globalAlpha = useStrokeLayer ? 1.0 : currentOpacity;
-        const coords = antialiasingEnabled ? { x, y } : this.roundToPixel(x, y);
-        const tool = this.getCurrentToolConfig();
-        tool?.drawPoint?.(this, { ctx, coords, useStrokeCtx });
-        ctx.restore();
-        if (useStrokeLayer) {
-            this.showStrokePreview();
-        } else {
-            this.renderCurrentFrame();
-        }
+        this._canvasEngine.drawPoint(x, y, useStrokeCtx);
     }
 
     floodFill(ctx, startX, startY, fillColor) {
-        const safeStartX = Math.max(0, Math.min(ctx.canvas.width - 1, Math.round(startX)));
-        const safeStartY = Math.max(0, Math.min(ctx.canvas.height - 1, Math.round(startY)));
+        return this._canvasEngine.floodFill(ctx, startX, startY, fillColor);
+    }
 
-        if (!Number.isFinite(safeStartX) || !Number.isFinite(safeStartY)) {
-            return;
-        }
-
-        const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
-        const pixels = imageData.data;
-        
-        const startPos = (safeStartY * ctx.canvas.width + safeStartX) * 4;
-        const startR = pixels[startPos];
-        const startG = pixels[startPos + 1];
-        const startB = pixels[startPos + 2];
-        const startA = pixels[startPos + 3];
-        
-        const fillR = parseInt(fillColor.substr(1, 2), 16);
-        const fillG = parseInt(fillColor.substr(3, 2), 16);
-        const fillB = parseInt(fillColor.substr(5, 2), 16);
-        
-        if (startR === fillR && startG === fillG && startB === fillB) return;
-        
-        const colorDistance = (r1, g1, b1, r2, g2, b2) => {
-            return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
-        };
-        
-        const pixelsToFill = [];
-        
-        const stack = [[safeStartX, safeStartY]];
-        const visited = new Set();
-        
-        while (stack.length) {
-            const [x, y] = stack.pop();
-            const pos = (y * ctx.canvas.width + x) * 4;
-            
-            if (x < 0 || x >= ctx.canvas.width || y < 0 || y >= ctx.canvas.height) continue;
-            
-            const r = pixels[pos];
-            const g = pixels[pos + 1];
-            const b = pixels[pos + 2];
-
-            if (visited.has(pos) || colorDistance(r, g, b, startR, startG, startB) > fillTolerance) {
-                continue;
-            }
-
-            pixelsToFill.push(pos);
-            visited.add(pos);
-            
-            stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
-        }
-        
-        pixelsToFill.forEach(pos => {
-            pixels[pos] = fillR;
-            pixels[pos + 1] = fillG;
-            pixels[pos + 2] = fillB;
-            pixels[pos + 3] = 255;
-        });
-        
-        ctx.putImageData(imageData, 0, 0);
+    getMergedVisibleLayersImageData() {
+        return this._canvasEngine.getMergedVisibleLayersImageData();
     }
 
     drawLine(x1, y1, x2, y2, useStrokeCtx = false) {
-        const useStrokeLayer = useStrokeCtx && strokeCtx && (currentTool === "pen" || currentTool === "eraser");
-        if (antialiasingEnabled) {
-            const ctx = useStrokeLayer ? strokeCtx : (() => {
-                const frame = frames[currentFrame];
-                const layer = frame.layers[currentLayer];
-                if (!layer || layer.locked) return null;
-                return this.getLayerContext(layer);
-            })();
-            if (!ctx) return;
-            ctx.save();
-            this.applyImageSmoothing(ctx);
-            ctx.globalAlpha = useStrokeLayer ? 1.0 : currentOpacity;
-            const tool = this.getCurrentToolConfig();
-            tool?.drawLine?.(this, { ctx, x1, y1, x2, y2, useStrokeCtx });
-            ctx.restore();
-            if (useStrokeLayer) {
-                this.showStrokePreview();
-            } else {
-                this.renderCurrentFrame();
-            }
-        } else {
-            let dx = Math.abs(x2 - x1);
-            let dy = Math.abs(y2 - y1);
-            let sx = x1 < x2 ? 1 : -1;
-            let sy = y1 < y2 ? 1 : -1;
-            let err = dx - dy;
-            let x = x1;
-            let y = y1;
-            while (true) {
-                this.drawPoint(x, y, useStrokeCtx);
-                if (x === x2 && y === y2) break;
-                let e2 = 2 * err;
-                if (e2 > -dy) { err -= dy; x += sx; }
-                if (e2 < dx) { err += dx; y += sy; }
-            }
-            if (useStrokeLayer) {
-                this.showStrokePreview();
-            } else {
-                this.renderCurrentFrame();
-            }
-        }
+        this._canvasEngine.drawLine(x1, y1, x2, y2, useStrokeCtx);
     }
 
     getConstrainedShapeEndPoint(start, end, { keepSquare = false, tool } = {}) {
-        if (!keepSquare || (tool !== 'rectangle' && tool !== 'circle')) {
-            return end;
-        }
+        return this._canvasEngine.getConstrainedShapeEndPoint(start, end, { keepSquare, tool });
+    }
 
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const size = Math.max(Math.abs(dx), Math.abs(dy));
-        const fallbackSignX = dy === 0 ? 1 : Math.sign(dy);
-        const fallbackSignY = dx === 0 ? 1 : Math.sign(dx);
-        const signX = dx === 0 ? fallbackSignX : Math.sign(dx);
-        const signY = dy === 0 ? fallbackSignY : Math.sign(dy);
-
-        return {
-            x: start.x + (size * signX),
-            y: start.y + (size * signY)
-        };
+    // Shared path-building for the shape tools: opens a path on `ctx` and
+    // adds the line/rect/ellipse geometry for `tool` between startCoords
+    // and endCoords. Stroke/dash/fill settings are the caller's
+    // responsibility -- drawShapePreview and commitShape's antialiased
+    // branch configure those differently before calling this.
+    buildShapePath(ctx, startCoords, endCoords, tool) {
+        this._canvasEngine.buildShapePath(ctx, startCoords, endCoords, tool);
     }
 
     drawShapePreview(start, end, tool, { keepSquare = false } = {}) {
-        overlayCtx.save();
-        this.applyImageSmoothing(overlayCtx);
-        
-        const startCoords = antialiasingEnabled ? start : this.roundToPixel(start.x, start.y);
-        const constrainedEnd = this.getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
-        const endCoords = antialiasingEnabled ? constrainedEnd : this.roundToPixel(constrainedEnd.x, constrainedEnd.y);
-        
-        overlayCtx.strokeStyle = currentColor;
-        overlayCtx.lineWidth = brushSize;
-        overlayCtx.globalAlpha = currentOpacity;
-        overlayCtx.setLineDash([4, 4]);
-        overlayCtx.lineCap = 'round';
-        overlayCtx.lineJoin = tool === 'rectangle' ? 'miter' : 'round';
-        overlayCtx.beginPath();
-        
-        if (tool === "line") {
-            overlayCtx.moveTo(startCoords.x, startCoords.y);
-            overlayCtx.lineTo(endCoords.x, endCoords.y);
-        } else if (tool === "rectangle") {
-            const halfBrush = brushSize / 2;
-            const x = Math.min(startCoords.x, endCoords.x) + halfBrush;
-            const y = Math.min(startCoords.y, endCoords.y) + halfBrush;
-            const width = Math.abs(startCoords.x - endCoords.x) - brushSize;
-            const height = Math.abs(startCoords.y - endCoords.y) - brushSize;
-            if (width > 0 && height > 0) {
-                overlayCtx.rect(x, y, width, height);
-            }
-        } else if (tool === "circle") {
-            const rx = (endCoords.x - startCoords.x) / 2;
-            const ry = (endCoords.y - startCoords.y) / 2;
-            const cx = startCoords.x + rx;
-            const cy = startCoords.y + ry;
-            const halfBrush = brushSize / 2;
-            const adjustedRx = Math.max(0, Math.abs(rx) - halfBrush);
-            const adjustedRy = Math.max(0, Math.abs(ry) - halfBrush);
-            if (adjustedRx > 0 && adjustedRy > 0) {
-                overlayCtx.ellipse(cx, cy, adjustedRx, adjustedRy, 0, 0, 2 * Math.PI);
-            }
-        }
-        
-        overlayCtx.stroke();
-        overlayCtx.restore();
+        this._canvasEngine.drawShapePreview(start, end, tool, { keepSquare });
     }
 
     commitShape(start, end, tool, { keepSquare = false } = {}) {
-        const frame = frames[currentFrame];
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) return;
-        
-        const ctx = this.getLayerContext(layer);
-        
-        if (antialiasingEnabled) {
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            
-            const startCoords = start;
-            const endCoords = this.getConstrainedShapeEndPoint(start, end, { keepSquare, tool });
-            ctx.strokeStyle = currentColor;
-            ctx.lineWidth = brushSize;
-            ctx.globalAlpha = currentOpacity;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = tool === 'rectangle' ? 'miter' : 'round';
-            ctx.beginPath();
-
-            if (tool === "line") {
-                ctx.moveTo(startCoords.x, startCoords.y);
-                ctx.lineTo(endCoords.x, endCoords.y);
-            } else if (tool === "rectangle") {
-                const halfBrush = brushSize / 2;
-                const x = Math.min(startCoords.x, endCoords.x) + halfBrush;
-                const y = Math.min(startCoords.y, endCoords.y) + halfBrush;
-                const width = Math.abs(startCoords.x - endCoords.x) - brushSize;
-                const height = Math.abs(startCoords.y - endCoords.y) - brushSize;
-                if (width > 0 && height > 0) {
-                    ctx.rect(x, y, width, height);
-                }
-            } else if (tool === "circle") {
-                const rx = (endCoords.x - startCoords.x) / 2;
-                const ry = (endCoords.y - startCoords.y) / 2;
-                const cx = startCoords.x + rx;
-                const cy = startCoords.y + ry;
-                const halfBrush = brushSize / 2;
-                const adjustedRx = Math.max(0, Math.abs(rx) - halfBrush);
-                const adjustedRy = Math.max(0, Math.abs(ry) - halfBrush);
-                if (adjustedRx > 0 && adjustedRy > 0) {
-                    ctx.ellipse(cx, cy, adjustedRx, adjustedRy, 0, 0, 2 * Math.PI);
-                }
-            }
-            ctx.stroke();
-        } else {
-            ctx.imageSmoothingEnabled = false;
-            
-            const startCoords = this.roundToPixel(start.x, start.y);
-            const constrainedEnd = this.getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
-            const endCoords = this.roundToPixel(constrainedEnd.x, constrainedEnd.y);
-            
-            ctx.fillStyle = currentColor;
-            ctx.strokeStyle = currentColor;
-            ctx.globalAlpha = currentOpacity;
-            
-            if (tool === "line") {
-                this.drawPixelPerfectLineWithFillRect(ctx, startCoords.x, startCoords.y, endCoords.x, endCoords.y);
-            } else if (tool === "rectangle") {
-                const x = Math.min(startCoords.x, endCoords.x);
-                const y = Math.min(startCoords.y, endCoords.y);
-                const width = Math.abs(endCoords.x - startCoords.x);
-                const height = Math.abs(endCoords.y - startCoords.y);
-                const bs = Math.round(brushSize);
-                if (bs <= 0) return;
-
-                if (bs * 2 > width || bs * 2 > height) {
-                    ctx.fillRect(x, y, width, height);
-                } else {
-                    ctx.fillRect(x, y, width, bs);
-                    ctx.fillRect(x, y + height - bs, width, bs);
-                    ctx.fillRect(x, y + bs, bs, height - 2 * bs);
-                    ctx.fillRect(x + width - bs, y + bs, bs, height - 2 * bs);
-                }
-            } else if (tool === "circle") {
-                const rx = (endCoords.x - startCoords.x) / 2;
-                const ry = (endCoords.y - startCoords.y) / 2;
-                const cx = startCoords.x + rx;
-                const cy = startCoords.y + ry;
-                this.drawPixelPerfectCircleWithFillRect(ctx, cx, cy, rx, ry);
-            }
-        }
-        
-        this.renderCurrentFrame();
+        this._canvasEngine.commitShape(start, end, tool, { keepSquare });
     }
     
-    getInterpolatedStrokePoints(x1, y1, x2, y2, spacing = 1) {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const distance = Math.hypot(dx, dy);
-        const stepDistance = Math.max(0.25, spacing);
-        const steps = Math.max(1, Math.ceil(distance / stepDistance));
-        const points = [];
-
-        for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            points.push({
-                x: x1 + dx * t,
-                y: y1 + dy * t
-            });
-        }
-
-        return points;
+    // Assembles the option snapshot the brush-engine rasterizers take in
+    // place of reading the module globals directly: current color (or an
+    // explicit override), pressure-adjusted size/flow, and the raw
+    // preset/shape/spacing/antialias/stroke-seed settings.
+    getBrushRenderOptions({ color = currentColor } = {}) {
+        return {
+            color,
+            size: this.getPressureAdjustedBrushSize(),
+            flow: this.getPressureAdjustedFlow(),
+            preset: brushPreset,
+            shape: brushShape,
+            spacing: brushSpacing,
+            antialias: antialiasingEnabled,
+            strokeSeed: currentStrokeSeed
+        };
     }
 
-    getPixelPerfectLinePoints(x1, y1, x2, y2) {
-        let startX = Math.round(x1);
-        let startY = Math.round(y1);
-        const endX = Math.round(x2);
-        const endY = Math.round(y2);
-        const points = [];
-        const dx = Math.abs(endX - startX);
-        const dy = Math.abs(endY - startY);
-        const sx = startX < endX ? 1 : -1;
-        const sy = startY < endY ? 1 : -1;
-        let err = dx - dy;
-
-        while (true) {
-            points.push({ x: startX, y: startY });
-
-            if (startX === endX && startY === endY) {
-                return points;
-            }
-
-            const e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                startX += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                startY += sy;
-            }
-        }
+    drawBrushStamp(ctx, x, y, { color = currentColor } = {}) {
+        brushEngine.drawBrushStamp(ctx, x, y, this.getBrushRenderOptions({ color }));
     }
 
-    drawPixelPerfectBrushStamp(ctx, centerX, centerY, size, shape = 'square') {
-        const stampSize = Math.max(1, Math.round(size));
-        const stampCenterX = Math.round(centerX);
-        const stampCenterY = Math.round(centerY);
-        const offset = Math.floor(stampSize / 2);
-
-        if (shape !== 'circle' || stampSize === 1) {
-            ctx.fillRect(stampCenterX - offset, stampCenterY - offset, stampSize, stampSize);
-            return;
-        }
-
-        const radius = stampSize / 2;
-
-        for (let y = 0; y < stampSize; y++) {
-            for (let x = 0; x < stampSize; x++) {
-                const pixelCenterX = x - offset + 0.5;
-                const pixelCenterY = y - offset + 0.5;
-                if ((pixelCenterX * pixelCenterX) + (pixelCenterY * pixelCenterY) <= radius * radius) {
-                    ctx.fillRect(stampCenterX - offset + x, stampCenterY - offset + y, 1, 1);
-                }
-            }
-        }
+    drawBrushLine(ctx, x1, y1, x2, y2, { color = currentColor } = {}) {
+        brushEngine.drawBrushLine(ctx, x1, y1, x2, y2, this.getBrushRenderOptions({ color }));
     }
 
     drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2) {
-        const points = this.getPixelPerfectLinePoints(x1, y1, x2, y2);
-
-        points.forEach(({ x, y }) => {
-            this.drawPixelPerfectBrushStamp(ctx, x, y, brushSize, brushShape);
-        });
+        brushEngine.drawPixelPerfectLineWithFillRect(ctx, x1, y1, x2, y2, brushSize, brushShape);
     }
-    
+
     drawPixelPerfectCircleWithFillRect(ctx, cx, cy, rx, ry) {
-        rx = Math.round(Math.abs(rx));
-        ry = Math.round(Math.abs(ry));
-        const thickness = Math.round(brushSize);
-
-        if (thickness <= 0 || (rx === 0 && ry === 0)) return;
-
-        const outer_rx = rx;
-        const outer_ry = ry;
-        
-        const isFilled = thickness >= outer_rx || thickness >= outer_ry;
-        
-        const inner_rx = isFilled ? 0 : outer_rx - thickness;
-        const inner_ry = isFilled ? 0 : outer_ry - thickness;
-
-        const outer_rx_sq = outer_rx * outer_rx;
-        const outer_ry_sq = outer_ry * outer_ry;
-        const inner_rx_sq = inner_rx * inner_rx;
-        const inner_ry_sq = inner_ry * inner_ry;
-
-        const cx_round = Math.round(cx);
-        const cy_round = Math.round(cy);
-
-        const outer_limit = outer_rx_sq * outer_ry_sq;
-        const inner_limit = inner_rx_sq * inner_ry_sq;
-
-        for (let y = -outer_ry; y <= outer_ry; y++) {
-            for (let x = -outer_rx; x <= outer_rx; x++) {
-                const x_sq = x * x;
-                const y_sq = y * y;
-
-                if (x_sq * outer_ry_sq + y_sq * outer_rx_sq <= outer_limit) {
-                    if (isFilled) {
-                        ctx.fillRect(cx_round + x, cy_round + y, 1, 1);
-                    } else {
-                        if (inner_limit === 0 || x_sq * inner_ry_sq + y_sq * inner_rx_sq > inner_limit) {
-                            ctx.fillRect(cx_round + x, cy_round + y, 1, 1);
-                        }
-                    }
-                }
-            }
-        }
+        brushEngine.drawPixelPerfectCircleWithFillRect(ctx, cx, cy, rx, ry, brushSize);
     }
 
     // Frame methods
     addFrame() {
-        if (activeSelection) this.clearSelection();
-        const newFrame = {
-            id: frames.length,
-            name: `Frame ${frames.length + 1}`,
-            layers: [],
-            timestamp: Date.now()
-        };
-        // Create empty layers matching the global layers array
-        layers.forEach(layerTemplate => {
-            const newLayer = {
-                id: layerTemplate.id,
-                name: layerTemplate.name,
-                visible: layerTemplate.visible,
-                locked: layerTemplate.locked,
-                canvas: document.createElement('canvas')
-            };
-            newLayer.canvas.width = mainCanvas.width;
-            newLayer.canvas.height = mainCanvas.height;
-            const ctx = this.getLayerContext(newLayer);
-            this.applyImageSmoothing(ctx);
-            // Optionally fill background for background layer
-            if (newLayer.id === 0) {
-                if (hasTransparentBackground) {
-                    // Clear canvas for transparent background
-                    ctx.clearRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
-                } else {
-                    // Set solid background color
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
-                }
-            }
-            newFrame.layers.push(newLayer);
-        });
-        frames.push(newFrame);
-        this.selectFrame(frames.length - 1);
-        this.updateTimeline();
+        this._frameManager.addFrame();
     }
 
     duplicateFrame() {
-        if (activeSelection) this.clearSelection();
-        if (frames.length === 0) return;
-        
-        const duplicatedFrame = {
-            id: frames.length,
-            name: `Frame ${frames.length + 1}`,
-            layers: [],
-            timestamp: Date.now()
-        };
-
-        frames[currentFrame].layers.forEach(layer => {
-            const newLayer = {
-                id: layer.id,
-                name: layer.name,
-                visible: layer.visible,
-                locked: layer.locked,
-                canvas: document.createElement('canvas')
-            };
-            newLayer.canvas.width = mainCanvas.width;
-            newLayer.canvas.height = mainCanvas.height;
-            const ctx = this.getLayerContext(newLayer);
-            
-            // Disable image smoothing for pixel-perfect rendering
-            this.applyImageSmoothing(ctx);
-            
-            ctx.drawImage(layer.canvas, 0, 0);
-            duplicatedFrame.layers.push(newLayer);
-        });
-
-        frames.push(duplicatedFrame);
-        this.selectFrame(frames.length - 1);
-        this.updateTimeline();
+        this._frameManager.duplicateFrame();
     }
 
     deleteFrame() {
-        if (activeSelection) this.clearSelection();
-        if (frames.length <= 1) return;
-        
-        frames.splice(currentFrame, 1);
-        this.reindexFrames();
-        
-        if (currentFrame >= frames.length) {
-            currentFrame = frames.length - 1;
-        }
-        
-        this.selectFrame(currentFrame);
-        this.updateTimeline();
+        this._frameManager.deleteFrame();
     }
 
     reindexFrames() {
-        frames.forEach((frame, index) => {
-            frame.id = index;
-            frame.name = `Frame ${index + 1}`;
-        });
+        this._frameManager.reindexFrames();
     }
 
     moveFrame(fromIndex, toIndex) {
-        if (activeSelection) this.clearSelection();
-        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= frames.length || toIndex >= frames.length) {
-            return;
-        }
-
-        this.saveStructureState();
-
-        const [movedFrame] = frames.splice(fromIndex, 1);
-        frames.splice(toIndex, 0, movedFrame);
-        this.reindexFrames();
-        currentFrame = toIndex;
-        this.renderCurrentFrame();
-        this.updateTimeline();
-        this.updateStatusBar();
+        this._frameManager.moveFrame(fromIndex, toIndex);
     }
 
     moveFrameLeft() {
-        if (currentFrame <= 0) return;
-        this.moveFrame(currentFrame, currentFrame - 1);
+        this._frameManager.moveFrameLeft();
     }
 
     moveFrameRight() {
-        if (currentFrame >= frames.length - 1) return;
-        this.moveFrame(currentFrame, currentFrame + 1);
+        this._frameManager.moveFrameRight();
     }
 
     selectFrame(frameIndex) {
-        if (activeSelection) {
-            this.clearSelection();
-        }
-        currentFrame = frameIndex;
-        this.renderCurrentFrame();
-        this.updateTimeline();
-        this.updateStatusBar();
+        this._frameManager.selectFrame(frameIndex);
     }
 
-    // Animation methods
     toggleAnimation() {
-        if (frames.length <= 1) return;
-        
-        if (isAnimating) {
-            // Stop animation
-            isAnimating = false;
-            const playPauseBtn = document.getElementById('playPauseBtn');
-            playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-            playPauseBtn.title = 'Play Animation (Space)';
-        } else {
-            // Start animation
-            isAnimating = true;
-            const playPauseBtn = document.getElementById('playPauseBtn');
-            playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-            playPauseBtn.title = 'Pause Animation (Space)';
-            this.animate();
-        }
-    }
-
-    stopAnimation() {
-        // This function is no longer used - replaced by toggleAnimation
+        this._frameManager.toggleAnimation();
     }
 
     animate() {
-        if (!isAnimating) return;
-        
-        const fps = parseInt(document.getElementById('fpsSlider').value);
-        const frameDelay = 1000 / fps;
-        
-        setTimeout(() => {
-            if (!isAnimating) return;
-            
-            currentFrame = (currentFrame + 1) % frames.length;
-            this.selectFrame(currentFrame);
-            this.animate();
-        }, frameDelay);
+        this._frameManager.animate();
     }
 
-    // Rendering methods
     renderCurrentFrame() {
-        // Clear main canvas
-        mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
-        // Apply smoothing settings to main canvas context
-        this.applyImageSmoothing(mainCtx);
-        if (frames.length === 0) return;
-        const frame = frames[currentFrame];
-        // Draw layers of the current frame first
-        frame.layers.forEach(layer => {
-            if (layer.visible) {
-                mainCtx.globalAlpha = layer.locked ? 0.5 : 1.0;
-                mainCtx.drawImage(layer.canvas, 0, 0);
-            }
-        });
-        // Then, draw onion skinning on top
-        if (onionSkinningEnabled) {
-            this.drawOnionSkinning();
-        }
-        if (referenceImage && referenceVisible) {
-            mainCtx.globalAlpha = referenceOpacity;
-            const scaledWidth = referenceImage.width * referenceScale;
-            const scaledHeight = referenceImage.height * referenceScale;
-            mainCtx.drawImage(referenceImage, referenceX, referenceY, scaledWidth, scaledHeight);
-        }
-        mainCtx.globalAlpha = 1.0;
-        // --- Live update timeline after every frame render ---
-        this.updateTimeline();
+        this._frameManager.renderCurrentFrame();
     }
 
     drawOnionSkinning() {
-        const range = onionSkinningRange;
-        const currentIndex = currentFrame;
-        
-        // Draw previous frames
-        for (let i = 1; i <= range; i++) {
-            const frameIndex = currentIndex - i;
-            if (frameIndex >= 0) {
-                this.drawFrameAsOnionSkin(frames[frameIndex], 0.3 / i);
-            }
-        }
-        
-        // Draw next frames
-        for (let i = 1; i <= range; i++) {
-            const frameIndex = currentIndex + i;
-            if (frameIndex < frames.length) {
-                this.drawFrameAsOnionSkin(frames[frameIndex], 0.2 / i);
-            }
-        }
+        this._frameManager.drawOnionSkinning();
     }
 
     drawFrameAsOnionSkin(frame, alpha) {
-        mainCtx.globalAlpha = alpha;
-        frame.layers.forEach(layer => {
-            if (layer.visible) {
-                mainCtx.drawImage(layer.canvas, 0, 0);
-            }
-        });
+        this._frameManager.drawFrameAsOnionSkin(frame, alpha);
     }
 
     // Layer methods
     addLayer() {
-        if (activeSelection) this.clearSelection();
-        this.saveStructureState(); // Save state for undo
-        const newLayer = {
-            id: layers.length,
-            name: `Layer ${layers.length + 1}`,
-            visible: true,
-            locked: false
-        };
-        
-        layers.push(newLayer);
-        
-        // Add layer to all frames
-        frames.forEach(frame => {
-            const layerCanvas = document.createElement('canvas');
-            layerCanvas.width = mainCanvas.width;
-            layerCanvas.height = mainCanvas.height;
-            const ctx = layerCanvas.getContext('2d');
-            
-            // Disable image smoothing for pixel-perfect rendering
-            this.applyImageSmoothing(ctx);
-            
-            ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
-            
-            frame.layers.push({
-                id: newLayer.id,
-                name: newLayer.name,
-                visible: newLayer.visible,
-                locked: newLayer.locked,
-                canvas: layerCanvas
-            });
-        });
-        
-        this.updateLayerList();
-        this.renderCurrentFrame();
+        this._layerManager.addLayer();
     }
 
     deleteLayer() {
-        if (activeSelection) this.clearSelection();
-        if (layers.length <= 1) return;
-        
-        this.saveStructureState(); // Save state for undo
-        
-        layers.splice(currentLayer, 1);
-        
-        // Remove layer from all frames
-        frames.forEach(frame => {
-            frame.layers.splice(currentLayer, 1);
-        });
-        
-        if (currentLayer >= layers.length) {
-            currentLayer = layers.length - 1;
-        }
-        
-        this.updateLayerList();
-        this.renderCurrentFrame();
+        this._layerManager.deleteLayer();
     }
 
     moveLayerUp() {
-        if (activeSelection) this.clearSelection();
-        if (currentLayer >= layers.length - 1) return;
-
-        this.saveStructureState(); // Save state for undo
-
-        // Swap with layer above
-        [layers[currentLayer], layers[currentLayer + 1]] = [layers[currentLayer + 1], layers[currentLayer]];
-
-        // Swap in each frame's layer array
-        frames.forEach(frame => {
-            [frame.layers[currentLayer], frame.layers[currentLayer + 1]] = [frame.layers[currentLayer + 1], frame.layers[currentLayer]];
-        });
-
-        currentLayer++;
-        this.updateLayerList();
-        this.renderCurrentFrame();
+        this._layerManager.moveLayerUp();
     }
 
     moveLayerDown() {
-        if (activeSelection) this.clearSelection();
-        if (currentLayer <= 0) return;
-
-        this.saveStructureState(); // Save state for undo
-
-        // Swap with layer below
-        [layers[currentLayer], layers[currentLayer - 1]] = [layers[currentLayer - 1], layers[currentLayer]];
-
-        // Swap in each frame's layer array
-        frames.forEach(frame => {
-            [frame.layers[currentLayer], frame.layers[currentLayer - 1]] = [frame.layers[currentLayer - 1], frame.layers[currentLayer]];
-        });
-
-        currentLayer--;
-        this.updateLayerList();
-        this.renderCurrentFrame();
+        this._layerManager.moveLayerDown();
     }
 
     flattenLayer() {
-        if (activeSelection) this.clearSelection();
-        if (currentLayer <= 0) {
-            alert("Cannot flatten the bottom layer.");
-            return;
-        }
-
-        this.saveStructureState(); // Save state for undo
-
-        const layerToFlattenIndex = currentLayer;
-        const layerBelowIndex = currentLayer - 1;
-
-        // Merge layer in each frame
-        frames.forEach(frame => {
-            const layerToFlatten = frame.layers[layerToFlattenIndex];
-            const layerBelow = frame.layers[layerBelowIndex];
-            
-            const ctxBelow = this.getLayerContext(layerBelow);
-            ctxBelow.drawImage(layerToFlatten.canvas, 0, 0);
-        });
-
-        // Remove the flattened layer from global list
-        layers.splice(layerToFlattenIndex, 1);
-        
-        // Remove flattened layer from each frame
-        frames.forEach(frame => {
-            frame.layers.splice(layerToFlattenIndex, 1);
-        });
-
-        currentLayer--;
-        this.updateLayerList();
-        this.renderCurrentFrame();
+        this._layerManager.flattenLayer();
     }
 
     // UI update methods
     updateTimeline() {
-        const timeline = document.getElementById('timeline');
-        timeline.innerHTML = '';
-        frames.forEach((frame, index) => {
-            const frameElement = document.createElement('div');
-            frameElement.className = `frame-item ${index === currentFrame ? 'active' : ''}`;
-            frameElement.dataset.frame = index;
-            frameElement.draggable = true;
-            frameElement.addEventListener('dragstart', (event) => {
-                draggedFrameIndex = index;
-                frameElement.classList.add('dragging');
-                if (event.dataTransfer) {
-                    event.dataTransfer.effectAllowed = 'move';
-                    event.dataTransfer.setData('text/plain', String(index));
-                }
-            });
-            frameElement.addEventListener('dragend', () => {
-                draggedFrameIndex = null;
-                frameElement.classList.remove('dragging');
-                timeline.querySelectorAll('.frame-item').forEach((item) => item.classList.remove('drag-over'));
-            });
-            frameElement.addEventListener('dragover', (event) => {
-                if (draggedFrameIndex === null || draggedFrameIndex === index) {
-                    return;
-                }
-                event.preventDefault();
-                frameElement.classList.add('drag-over');
-                if (event.dataTransfer) {
-                    event.dataTransfer.dropEffect = 'move';
-                }
-            });
-            frameElement.addEventListener('dragleave', () => {
-                frameElement.classList.remove('drag-over');
-            });
-            frameElement.addEventListener('drop', (event) => {
-                event.preventDefault();
-                frameElement.classList.remove('drag-over');
-                if (draggedFrameIndex === null || draggedFrameIndex === index) {
-                    return;
-                }
-                this.moveFrame(draggedFrameIndex, index);
-            });
-            // Create a canvas for the preview
-            const previewCanvas = document.createElement('canvas');
-            previewCanvas.width = 50;
-            previewCanvas.height = 40;
-            const previewCtx = previewCanvas.getContext('2d');
-            
-            // Fill with background color
-            previewCtx.fillStyle = '#222';
-            previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
-            // Composite all visible layers, scaled to fit
-            const scaleX = previewCanvas.width / mainCanvas.width;
-            const scaleY = previewCanvas.height / mainCanvas.height;
-            frame.layers.forEach(layer => {
-                if (layer.visible) {
-                    previewCtx.save();
-                    previewCtx.globalAlpha = layer.locked ? 0.5 : 1.0;
-                    previewCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
-                    previewCtx.drawImage(layer.canvas, 0, 0);
-                    previewCtx.setTransform(1, 0, 0, 1, 0, 0);
-                    previewCtx.restore();
-                }
-            });
-            // Add the preview canvas to the frame preview div
-            const previewDiv = document.createElement('div');
-            previewDiv.className = 'frame-preview';
-            previewDiv.appendChild(previewCanvas);
-            // Add frame number
-            const numberSpan = document.createElement('span');
-            numberSpan.className = 'frame-number';
-            numberSpan.textContent = (index + 1).toString();
-            frameElement.appendChild(previewDiv);
-            frameElement.appendChild(numberSpan);
-            frameElement.addEventListener('click', () => this.selectFrame(index));
-            timeline.appendChild(frameElement);
-        });
+        this._frameManager.updateTimeline();
     }
 
     updateLayerList() {
-        const layerList = document.getElementById('layerList');
-        layerList.innerHTML = '';
-        
-        layers.forEach((layer, index) => {
-            const layerElement = document.createElement('div');
-            layerElement.className = `layer-item ${index === currentLayer ? 'active' : ''}`;
-            layerElement.dataset.layer = index;
-            
-            layerElement.innerHTML = `
-                <div class="layer-info">
-                    <span class="layer-name">${layer.name}</span>
-                    ${index === currentLayer ? '<i class="fas fa-pencil-alt layer-indicator"></i>' : ''}
-                </div>
-                <div class="layer-visibility">
-                    <i class="fas fa-${layer.visible ? 'eye' : 'eye-slash'}"></i>
-                </div>
-            `;
-
-            const visibilityToggle = layerElement.querySelector('.layer-visibility');
-            visibilityToggle.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent layer selection when toggling visibility
-                this.toggleLayerVisibility(index);
-            });
-            
-            layerElement.addEventListener('click', () => this.selectLayer(index));
-            layerList.prepend(layerElement);
-        });
+        this._layerManager.updateLayerList();
     }
 
     selectLayer(layerIndex) {
-        if (activeSelection) {
-            this.clearSelection();
-        }
-        currentLayer = layerIndex;
-        this.renderCurrentFrame();
-        this.updateLayerList();
-        this.updateStatusBar();
+        this._layerManager.selectLayer(layerIndex);
     }
 
     toggleLayerVisibility(layerIndex) {
-        this.saveStructureState(); // Save for undo
-
-        const layer_template = layers[layerIndex];
-        layer_template.visible = !layer_template.visible;
-
-        // Propagate visibility change to all frames
-        frames.forEach(frame => {
-            const layer = frame.layers[layerIndex];
-            if (layer) {
-                layer.visible = layer_template.visible;
-            }
-        });
-
-        this.updateLayerList();
-        this.renderCurrentFrame();
+        this._layerManager.toggleLayerVisibility(layerIndex);
     }
 
     updateStatusBar() {
-        const toolNames = {
-            pen: 'Pen Tool',
-            line: 'Line Tool',
-            rectangle: 'Rectangle Tool',
-            circle: 'Circle Tool',
-            fill: 'Fill Tool',
-            eraser: 'Eraser Tool',
-            selection: 'Selection Tool'
-        };
-        
-        document.getElementById('currentTool').textContent = toolNames[currentTool] || 'Unknown Tool';
-        document.getElementById('currentColor').textContent = `Color: ${currentColor}`;
-        document.getElementById('brushSize').textContent = `Size: ${brushSize}px`;
-        document.getElementById('currentFrame').textContent = `Frame: ${currentFrame + 1}`;
-        document.getElementById('totalFrames').textContent = `Total: ${frames.length}`;
-        document.getElementById('canvasDimensions').textContent = `${mainCanvas.width}x${mainCanvas.height}`;
-        
-        // Add current layer information
-        const currentLayerName = layers[currentLayer] ? layers[currentLayer].name : 'Unknown';
-        const currentLayerInfo = `Layer: ${currentLayerName}`;
-        const statusLeft = document.querySelector('.status-left');
-        const existingLayerInfo = statusLeft.querySelector('#currentLayerInfo');
-        if (existingLayerInfo) {
-            existingLayerInfo.textContent = currentLayerInfo;
-        } else {
-            const layerInfo = document.createElement('span');
-            layerInfo.id = 'currentLayerInfo';
-            layerInfo.textContent = currentLayerInfo;
-            statusLeft.appendChild(layerInfo);
-        }
-        
-        // Add antialiasing status to status bar
-        const antialiasingStatus = antialiasingEnabled ? 'AA: On' : 'AA: Off';
-        const statusRight = document.querySelector('.status-right');
-        const existingAAStatus = statusRight.querySelector('#antialiasingStatus');
-        if (existingAAStatus) {
-            existingAAStatus.textContent = antialiasingStatus;
-        } else {
-            const aaStatus = document.createElement('span');
-            aaStatus.id = 'antialiasingStatus';
-            aaStatus.textContent = antialiasingStatus;
-            statusRight.appendChild(aaStatus);
-        }
-        
-        // Add reference image status
-        const existingRefStatus = statusRight.querySelector('#referenceStatus');
-        if (existingRefStatus) {
-            existingRefStatus.remove();
-        }
-        
-        if (referenceImage && referenceVisible) {
-            const refStatus = document.createElement('span');
-            refStatus.id = 'referenceStatus';
-            refStatus.textContent = `Ref: ${Math.round(referenceScale * 100)}%`;
-            refStatus.title = 'Reference image loaded. Ctrl+click to drag, Ctrl+/- to scale, Ctrl+R to re-center without changing zoom';
-            statusRight.appendChild(refStatus);
-        }
+        this._statusBar.updateStatusBar();
     }
 
     // Zoom methods
     zoomIn() {
-        zoom = Math.min(zoom * 1.2, 20); // 2000% max
-        this.updateZoom();
+        this._zoom.zoomIn();
     }
 
     zoomOut() {
-        zoom = Math.max(zoom / 1.2, 0.1); // 10% min
-        this.updateZoom();
+        this._zoom.zoomOut();
     }
 
     zoomAtPoint(zoomFactor, mouseX, mouseY) {
-        const canvasWrapper = document.querySelector('.canvas-wrapper');
-        const rect = canvasWrapper.getBoundingClientRect();
-
-        const mouseWrapperX = mouseX - rect.left;
-        const mouseWrapperY = mouseY - rect.top;
-
-        const scrollX = mouseWrapperX + canvasWrapper.scrollLeft;
-        const scrollY = mouseWrapperY + canvasWrapper.scrollTop;
-
-        const oldZoom = zoom;
-        const newZoom = Math.max(0.1, Math.min(20, zoom * zoomFactor));
-
-        if (newZoom === oldZoom) {
-            return;
-        }
-
-        const canvasX = scrollX / oldZoom;
-        const canvasY = scrollY / oldZoom;
-
-        const newScrollX = canvasX * newZoom;
-        const newScrollY = canvasY * newZoom;
-
-        const newScrollLeft = newScrollX - mouseWrapperX;
-        const newScrollTop = newScrollY - mouseWrapperY;
-
-        zoom = newZoom;
-        this.updateZoom();
-
-        canvasWrapper.scrollLeft = newScrollLeft;
-        canvasWrapper.scrollTop = newScrollTop;
+        this._zoom.zoomAtPoint(zoomFactor, mouseX, mouseY);
     }
 
     resetZoom() {
-        zoom = 1;
-        this.updateZoom();
-        const canvasWrapper = document.querySelector('.canvas-wrapper');
-        const scaler = document.getElementById('canvas-scaler');
-        canvasWrapper.scrollLeft = (scaler.offsetWidth - canvasWrapper.clientWidth) / 2;
-        canvasWrapper.scrollTop = (scaler.offsetHeight - canvasWrapper.clientHeight) / 2;
+        this._zoom.resetZoom();
     }
 
     updateZoom() {
-        const scaler = document.getElementById('canvas-scaler');
-        scaler.style.width = `${mainCanvas.width * zoom}px`;
-        scaler.style.height = `${mainCanvas.height * zoom}px`;
-        
-        mainCanvas.style.transform = '';
-        overlayCanvas.style.transform = '';
-        
-        // Update zoom input and slider
-        const zoomPercentage = Math.round(zoom * 100);
-        document.getElementById('zoomInput').value = zoomPercentage;
-        document.getElementById('zoomSlider').value = zoomPercentage;
-        
-        // Update brush size preview to reflect new zoom level
-        const brushPreview = document.getElementById('canvasBrushPreview');
-        if (brushPreview.style.display !== 'none' && (currentTool === 'pen' || currentTool === 'eraser')) {
-            // Trigger a mouse move event to update the brush preview
-            const event = new MouseEvent('mousemove', {
-                clientX: parseInt(brushPreview.style.left) || 0,
-                clientY: parseInt(brushPreview.style.top) || 0
-            });
-            mainCanvas.dispatchEvent(event);
-        }
+        this._zoom.updateZoom();
     }
 
     // Reference image methods
@@ -2541,30 +1124,11 @@ class WASRTK {
     }
 
     hasReferenceSource() {
-        return Boolean(referenceImage || this.screenCaptureInterval);
+        return reference.hasReferenceSource(this, this.getReferenceApi());
     }
 
     setLoadedReferenceImage(img, dataUrl) {
-        referenceImage = img;
-        referenceX = (mainCanvas.width - img.width) / 2;
-        referenceY = (mainCanvas.height - img.height) / 2;
-        referenceScale = 1.0;
-
-        const uiImage = document.getElementById('referenceImage');
-        uiImage.src = dataUrl;
-        uiImage.style.display = 'block';
-        uiImage.style.transform = 'scale(1)';
-
-        const zoomSlider = document.getElementById('referenceZoom');
-        zoomSlider.value = Math.round(referenceScale * 100);
-        document.getElementById('referenceZoomValue').value = Math.round(referenceScale * 100);
-
-        referenceVisible = true;
-        document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
-
-        this.updateReferencePreview();
-        this.renderCurrentFrame();
-        this.updateStatusBar();
+        reference.setLoadedReferenceImage(this, this.getReferenceApi(), img, dataUrl);
     }
 
     toggleReference() {
@@ -2588,9 +1152,9 @@ class WASRTK {
         
         // Set global transparent background flag
         hasTransparentBackground = transparentBackground;
+        projectBackgroundColor = backgroundColor;
         
-        // Update canvas wrapper class for transparency
-        // this.updateTransparentBackgroundClass();
+        this.updateTransparentBackgroundClass();
         
         // Resize canvases
         mainCanvas.width = width;
@@ -2706,7 +1270,7 @@ class WASRTK {
                 canvas: {
                     width: mainCanvas.width,
                     height: mainCanvas.height,
-                    backgroundColor: hasTransparentBackground ? null : '#ffffff',
+                    backgroundColor: hasTransparentBackground ? null : projectBackgroundColor,
                     transparentBackground: hasTransparentBackground,
                     author: 'WASRTK'
                 },
@@ -2722,6 +1286,18 @@ class WASRTK {
                     currentOpacity,
                     brushSize,
                     brushShape,
+                    brushPreset,
+                    brushFlow,
+                    brushSpacing,
+                    pressureSensitivityEnabled,
+                    pressureAffectsSize,
+                    pressureAffectsFlow,
+                    selectionMode,
+                    selectionAntialias,
+                    selectionFeather,
+                    fillTolerance,
+                    fillContiguous,
+                    fillSampleAllLayers,
                     zoom
                 }
             });
@@ -2751,12 +1327,7 @@ class WASRTK {
             width: mainCanvas.width,
             height: mainCanvas.height,
             invoke: ipcRenderer.invoke.bind(ipcRenderer),
-            createCanvas: (width, height) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                return canvas;
-            }
+            createCanvas
         });
     }
 
@@ -2768,190 +1339,41 @@ class WASRTK {
             height: mainCanvas.height,
             fps,
             invoke: ipcRenderer.invoke.bind(ipcRenderer),
-            createCanvas: (width, height) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                return canvas;
-            },
+            createCanvas,
             GIF
         });
     }
 
-    // History methods
+    // History methods (thin delegators over the history module; the
+    // undo/redo stacks live in its closure -- see the constructor).
     saveState() {
-        const frame = frames[currentFrame];
-        if (!frame) return;
-        const layer = frame.layers[currentLayer];
-        if (!layer || layer.locked) return;
+        this._history.saveState();
+    }
 
-        const canvas = layer.canvas;
-        const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-
-        this.undoStack.push({
-            type: 'draw',
-            frameIndex: currentFrame,
-            layerIndex: currentLayer,
-            imageData: imageData
-        });
-        
-        this.redoStack = [];
-        this.updateUndoRedoButtons();
+    discardLastUndoState() {
+        this._history.discardLastUndoState();
     }
 
     saveStructureState() {
-        const framesCopy = this.cloneFrames(frames);
-        
-        this.undoStack.push({
-            type: 'structure',
-            frames: framesCopy,
-            layers: JSON.parse(JSON.stringify(layers)),
-            currentFrame: currentFrame,
-            currentLayer: currentLayer
-        });
-
-        this.redoStack = [];
-        this.updateUndoRedoButtons();
-    }
-
-    cloneFrames(framesToClone) {
-        return framesToClone.map(frame => ({
-            ...frame,
-            layers: frame.layers.map(layer => {
-                const canvas = document.createElement('canvas');
-                canvas.width = layer.canvas.width;
-                canvas.height = layer.canvas.height;
-                canvas.getContext('2d').drawImage(layer.canvas, 0, 0);
-                return { ...layer, canvas: canvas };
-            })
-        }));
+        this._history.saveStructureState();
     }
 
     undo() {
-        if (this.undoStack.length === 0) return;
-
-        const stateToRestore = this.undoStack.pop();
-
-        if (stateToRestore.type === 'draw') {
-            const frameToSave = frames[stateToRestore.frameIndex];
-            const layerToSave = frameToSave.layers[stateToRestore.layerIndex];
-            const canvasToSave = layerToSave.canvas;
-            const ctxToSave = canvasToSave.getContext('2d');
-            const currentStateForRedo = ctxToSave.getImageData(0, 0, canvasToSave.width, canvasToSave.height);
-
-            this.redoStack.push({
-                type: 'draw',
-                frameIndex: stateToRestore.frameIndex,
-                layerIndex: stateToRestore.layerIndex,
-                imageData: currentStateForRedo
-            });
-
-            const frameToRestore = frames[stateToRestore.frameIndex];
-            const layerToRestore = frameToRestore.layers[stateToRestore.layerIndex];
-            const canvasToRestore = layerToRestore.canvas;
-            const ctxToRestore = canvasToRestore.getContext('2d');
-            ctxToRestore.putImageData(stateToRestore.imageData, 0, 0);
-        } else if (stateToRestore.type === 'structure') {
-            const currentStateForRedo = {
-                type: 'structure',
-                frames: this.cloneFrames(frames),
-                layers: JSON.parse(JSON.stringify(layers)),
-                currentFrame: currentFrame,
-                currentLayer: currentLayer
-            };
-            this.redoStack.push(currentStateForRedo);
-
-            frames = stateToRestore.frames;
-            layers = stateToRestore.layers;
-            currentFrame = Math.min(stateToRestore.currentFrame ?? currentFrame, frames.length - 1);
-            currentLayer = stateToRestore.currentLayer;
-        }
-
-        this.renderCurrentFrame();
-        this.updateUI();
+        this._history.undo();
     }
 
     redo() {
-        if (this.redoStack.length === 0) return;
-
-        const stateToRestore = this.redoStack.pop();
-
-        if (stateToRestore.type === 'draw') {
-            const frameToSave = frames[stateToRestore.frameIndex];
-            const layerToSave = frameToSave.layers[stateToRestore.layerIndex];
-            const canvasToSave = layerToSave.canvas;
-            const ctxToSave = canvasToSave.getContext('2d');
-            const currentStateForUndo = ctxToSave.getImageData(0, 0, canvasToSave.width, canvasToSave.height);
-    
-            this.undoStack.push({
-                type: 'draw',
-                frameIndex: stateToRestore.frameIndex,
-                layerIndex: stateToRestore.layerIndex,
-                imageData: currentStateForUndo
-            });
-    
-            const frameToRestore = frames[stateToRestore.frameIndex];
-            const layerToRestore = frameToRestore.layers[stateToRestore.layerIndex];
-            const canvasToRestore = layerToRestore.canvas;
-            const ctxToRestore = canvasToRestore.getContext('2d');
-            ctxToRestore.putImageData(stateToRestore.imageData, 0, 0);
-        } else if (stateToRestore.type === 'structure') {
-            const currentStateForUndo = {
-                type: 'structure',
-                frames: this.cloneFrames(frames),
-                layers: JSON.parse(JSON.stringify(layers)),
-                currentFrame: currentFrame,
-                currentLayer: currentLayer
-            };
-            this.undoStack.push(currentStateForUndo);
-            
-            frames = stateToRestore.frames;
-            layers = stateToRestore.layers;
-            currentFrame = Math.min(stateToRestore.currentFrame ?? currentFrame, frames.length - 1);
-            currentLayer = stateToRestore.currentLayer;
-        }
-
-        this.renderCurrentFrame();
-        this.updateUI();
+        this._history.redo();
     }
 
     updateUndoRedoButtons() {
-        document.getElementById('undoBtn').disabled = this.undoStack.length === 0;
-        document.getElementById('redoBtn').disabled = this.redoStack.length === 0;
+        this._history.updateUndoRedoButtons();
     }
 
     startScreenShare() {
         reference.startScreenShare(this, this.getReferenceApi());
     }
-    
-    tryFallbackScreenCapture() {
-        reference.tryFallbackScreenCapture(this);
-    }
-    
-    showScreenShareModal(sources) {
-        reference.showScreenShareModal(this, sources);
-    }
-    
-    hideScreenShareModal() {
-        reference.hideScreenShareModal(this);
-    }
-    
-    selectScreenSource(source) {
-        reference.selectScreenSource(this, source);
-    }
-    
-    tryAlternativeScreenCapture(source) {
-        reference.tryAlternativeScreenCapture(this, source);
-    }
-    
-    setupScreenShareStream(stream, sourceName) {
-        reference.setupScreenShareStream(this, stream, sourceName);
-    }
-    
-    startFrameCapture(video, canvas, ctx, sourceName) {
-        reference.startFrameCapture(this, video, canvas, ctx, sourceName);
-    }
-    
+
     updateReferenceImageOnly(blob) {
         reference.updateReferenceImageOnly(this, this.getReferenceApi(), blob);
     }
@@ -2972,48 +1394,11 @@ class WASRTK {
     }
 
     updateBrushSizePreview(screenX, screenY) {
-        const brushPreview = document.getElementById('canvasBrushPreview');
-        
-        // Only show preview for pen and eraser tools
-        if (currentTool !== 'pen' && currentTool !== 'eraser') {
-            brushPreview.style.display = 'none';
-            return;
-        }
-        
-        // Position relative to the viewport (screen coordinates)
-        brushPreview.style.position = 'fixed';
-        brushPreview.style.left = screenX + 'px';
-        brushPreview.style.top = screenY + 'px';
-        brushPreview.style.transform = 'translate(-50%, -50%)';
-        brushPreview.style.display = 'block';
-        
-        // Update brush preview style based on brush size and tool
-        if (brushSize === 1) {
-            brushPreview.classList.add('pixel');
-            brushPreview.style.width = '2px';
-            brushPreview.style.height = '2px';
-            brushPreview.style.borderRadius = '0';
-        } else {
-            brushPreview.classList.remove('pixel');
-            const size = Math.max(2, brushSize * zoom); // Ensure minimum 2px size for visibility
-            brushPreview.style.width = size + 'px';
-            brushPreview.style.height = size + 'px';
-            brushPreview.style.borderRadius = brushShape === 'square' ? '0' : '50%';
-        }
-        
-        // Set the preview color based on tool
-        if (currentTool === 'pen') {
-            brushPreview.style.backgroundColor = currentColor;
-            brushPreview.style.borderColor = currentColor;
-        } else if (currentTool === 'eraser') {
-            brushPreview.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
-            brushPreview.style.borderColor = '#ffffff';
-        }
+        this._brushSettings.updateBrushSizePreview(screenX, screenY);
     }
 
     hideBrushSizePreview() {
-        const brushPreview = document.getElementById('canvasBrushPreview');
-        brushPreview.style.display = 'none';
+        this._brushSettings.hideBrushSizePreview();
     }
 
     resetReferencePosition() {
@@ -3030,14 +1415,7 @@ class WASRTK {
 
     // Helper to show the in-progress stroke on the overlay canvas
     showStrokePreview() {
-        if (strokeCanvas && overlayCanvas) {
-            const ctx = overlayCtx;
-            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            ctx.save();
-            ctx.globalAlpha = currentOpacity;
-            ctx.drawImage(strokeCanvas, 0, 0);
-            ctx.restore();
-        }
+        this._brushSettings.showStrokePreview();
     }
 
     async loadProject(filePath) {
@@ -3065,18 +1443,14 @@ class WASRTK {
                 overlayCanvas.width = projectData.canvas.width;
                 overlayCanvas.height = projectData.canvas.height;
                 hasTransparentBackground = projectData.canvas.transparentBackground || false;
+                projectBackgroundColor = projectData.canvas.backgroundColor || '#ffffff';
             }
 
             frames = await buildFramesFromProject({
                 projectData,
                 width: mainCanvas.width,
                 height: mainCanvas.height,
-                createCanvas: (width, height) => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = width;
-                    canvas.height = height;
-                    return canvas;
-                },
+                createCanvas,
                 loadImageToCanvas: (canvas, dataUrl) => this.loadImageToCanvas(canvas, dataUrl),
                 applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
                 fillFallbackLayer: (canvas) => {
@@ -3105,6 +1479,18 @@ class WASRTK {
             currentOpacity = settings.currentOpacity;
             brushSize = settings.brushSize;
             brushShape = settings.brushShape;
+            brushPreset = settings.brushPreset;
+            brushFlow = settings.brushFlow;
+            brushSpacing = settings.brushSpacing;
+            pressureSensitivityEnabled = settings.pressureSensitivityEnabled;
+            pressureAffectsSize = settings.pressureAffectsSize;
+            pressureAffectsFlow = settings.pressureAffectsFlow;
+            selectionMode = settings.selectionMode;
+            selectionAntialias = settings.selectionAntialias;
+            selectionFeather = settings.selectionFeather;
+            fillTolerance = settings.fillTolerance;
+            fillContiguous = settings.fillContiguous;
+            fillSampleAllLayers = settings.fillSampleAllLayers;
             zoom = settings.zoom;
 
             this.updateAllCanvasSmoothing();
@@ -3124,10 +1510,30 @@ class WASRTK {
             document.getElementById('referenceOpacity').value = referenceOpacity * 100;
             document.getElementById('referenceOpacityValue').value = Math.round(referenceOpacity * 100);
             document.getElementById('antialiasingEnabled').checked = antialiasingEnabled;
+            document.getElementById('transparentBackground').checked = hasTransparentBackground;
+            document.getElementById('backgroundColor').value = projectBackgroundColor;
+            document.getElementById('transparentBackground').dispatchEvent(new Event('change'));
+            this.updateTransparentBackgroundClass();
             document.getElementById('colorPicker').value = currentColor;
             document.getElementById('brushSizeSlider').value = brushSize;
-            document.getElementById('brushSizeValue').textContent = brushSize + 'px';
-            document.getElementById('brushShapeSelect').value = brushShape;
+            this.setBrushSize(brushSize, { silent: true });
+            this.setBrushShape(brushShape, { silent: true });
+            this.setBrushPreset(brushPreset, { silent: true });
+            document.getElementById('brushFlowSlider').value = Math.round(brushFlow * 100);
+            document.getElementById('brushFlowValue').textContent = `${Math.round(brushFlow * 100)}%`;
+            document.getElementById('brushSpacingSlider').value = Math.round(brushSpacing * 100);
+            document.getElementById('brushSpacingValue').textContent = `${Math.round(brushSpacing * 100)}%`;
+            document.getElementById('pressureSensitivityEnabled').checked = pressureSensitivityEnabled;
+            document.getElementById('pressureAffectsSize').checked = pressureAffectsSize;
+            document.getElementById('pressureAffectsFlow').checked = pressureAffectsFlow;
+            document.getElementById('selectionModeSelect').value = selectionMode;
+            document.getElementById('selectionAntialias').checked = selectionAntialias;
+            document.getElementById('selectionFeatherSlider').value = selectionFeather;
+            document.getElementById('selectionFeatherValue').textContent = `${selectionFeather}px`;
+            document.getElementById('fillToleranceSlider').value = fillTolerance;
+            document.getElementById('fillToleranceValue').textContent = fillTolerance;
+            document.getElementById('fillContiguous').checked = fillContiguous;
+            document.getElementById('fillSampleAllLayers').checked = fillSampleAllLayers;
             document.getElementById('opacitySlider').value = currentOpacity * 100;
             document.getElementById('opacityValue').textContent = Math.round(currentOpacity * 100) + '%';
 
@@ -3160,7 +1566,7 @@ class WASRTK {
     }
 
     updateTransparentBackgroundClass() {
-        const canvasWrapper = document.querySelector('.canvas-wrapper');
+        const canvasWrapper = this.canvasWrapper;
         if (hasTransparentBackground) {
             canvasWrapper.classList.add('transparent-bg');
         } else {

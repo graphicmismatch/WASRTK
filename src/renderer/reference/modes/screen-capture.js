@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+const { setReferenceToggleIcon } = require('../settings');
 
 function startScreenShare(app, api) {
   if (app.screenCaptureInterval) {
@@ -73,7 +74,7 @@ function startFrameCapture(app, video, canvas, ctx, sourceName) {
         ctx.drawImage(video, 0, 0);
         canvas.toBlob((blob) => {
           if (!blob) return;
-          if (!app.getReferenceApi().getImage()) { app.getReferenceApi().setVisible(true); document.getElementById('toggleReferenceBtn').innerHTML = '<i class="fas fa-eye-slash"></i>'; }
+          if (!app.getReferenceApi().getImage()) { app.getReferenceApi().setVisible(true); setReferenceToggleIcon(true); }
           if (app.getReferenceApi().isVisible() && (!app.getReferenceApi().getImage() || !app.getReferenceApi().getUserModified())) {
             app.loadReferenceFromBlob(blob, sourceName);
           } else if (app.getReferenceApi().isVisible() && app.getReferenceApi().getImage() && app.getReferenceApi().getUserModified()) {

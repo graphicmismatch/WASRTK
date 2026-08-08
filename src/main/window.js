@@ -1,5 +1,6 @@
 const path = require('path');
 const { BrowserWindow, dialog } = require('electron');
+const { isDev } = require('./constants');
 
 function createWindowController({ getWindowOptions, loadFile }) {
   let mainWindow = null;
@@ -11,7 +12,7 @@ function createWindowController({ getWindowOptions, loadFile }) {
   }
 
   function sendToRenderer(channel, payload) {
-    if (!mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       return;
     }
 
@@ -22,27 +23,27 @@ function createWindowController({ getWindowOptions, loadFile }) {
     return () => sendToRenderer(channel, payload);
   }
 
-  function sendThemeUpdate(payload) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('theme-config-updated', payload);
-    }
+  function broadcastToWindows(windows, channel, payload) {
+    windows.forEach((win) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(channel, payload);
+      }
+    });
+  }
 
-    if (themeWindow && !themeWindow.isDestroyed()) {
-      themeWindow.webContents.send('theme-config-updated', payload);
-    }
+  function sendThemeUpdate(payload) {
+    broadcastToWindows([mainWindow, themeWindow], 'theme-config-updated', payload);
   }
 
   function sendPaletteUpdate(payload) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('palette-config-updated', payload);
-    }
-
-    if (paletteWindow && !paletteWindow.isDestroyed()) {
-      paletteWindow.webContents.send('palette-config-updated', payload);
-    }
+    broadcastToWindows([mainWindow, paletteWindow], 'palette-config-updated', payload);
   }
 
   async function showOpenDialogAndSend({ filters, channel }) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],
       filters
@@ -54,6 +55,10 @@ function createWindowController({ getWindowOptions, loadFile }) {
   }
 
   async function showSaveDialogAndSend({ filters, channel }) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+
     const result = await dialog.showSaveDialog(mainWindow, { filters });
 
     if (!result.canceled) {
@@ -88,79 +93,82 @@ function createWindowController({ getWindowOptions, loadFile }) {
 
     setupPermissions();
 
-    if (process.argv.includes('--dev')) {
+    if (isDev) {
       mainWindow.webContents.openDevTools();
     }
   }
 
-  function openThemeSettingsWindow() {
-    if (themeWindow && !themeWindow.isDestroyed()) {
-      themeWindow.focus();
-      return themeWindow;
+  // Collapses the near-identical theme/palette editor window setup: focus
+  // if already open, else create hidden -> remove menu -> load its html ->
+  // show once ready -> clear the reference on close -> open devtools in
+  // --dev. `getWindow`/`setWindow` close over the module-scoped
+  // `themeWindow`/`paletteWindow` variables so each caller keeps its own
+  // window reference.
+  function createChildWindow({ getWindow, setWindow, htmlFile, title, width, height, minWidth, minHeight }) {
+    const existing = getWindow();
+    if (existing && !existing.isDestroyed()) {
+      existing.focus();
+      return existing;
     }
 
-    themeWindow = new BrowserWindow({
+    const childWindow = new BrowserWindow({
       ...getWindowOptions(),
+      width,
+      height,
+      minWidth,
+      minHeight,
+      parent: mainWindow || undefined,
+      title,
+      show: false
+    });
+    setWindow(childWindow);
+
+    childWindow.removeMenu();
+    childWindow.loadFile(path.resolve(__dirname, '../../', htmlFile));
+
+    childWindow.once('ready-to-show', () => {
+      childWindow.show();
+    });
+
+    childWindow.on('closed', () => {
+      setWindow(null);
+    });
+
+    if (isDev) {
+      childWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+
+    return childWindow;
+  }
+
+  function openThemeSettingsWindow() {
+    return createChildWindow({
+      getWindow: () => themeWindow,
+      setWindow: (win) => {
+        themeWindow = win;
+      },
+      htmlFile: 'theme-window.html',
+      title: 'WASRTK Theme Settings',
       width: 900,
       height: 780,
       minWidth: 700,
-      minHeight: 640,
-      parent: mainWindow || undefined,
-      title: 'WASRTK Theme Settings',
-      show: false
+      minHeight: 640
     });
-
-    themeWindow.removeMenu();
-    themeWindow.loadFile(path.resolve(__dirname, '../../theme-window.html'));
-
-    themeWindow.once('ready-to-show', () => {
-      themeWindow.show();
-    });
-
-    themeWindow.on('closed', () => {
-      themeWindow = null;
-    });
-
-    if (process.argv.includes('--dev')) {
-      themeWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-
-    return themeWindow;
   }
 
   function openPaletteEditorWindow() {
-    if (paletteWindow && !paletteWindow.isDestroyed()) {
-      paletteWindow.focus();
-      return paletteWindow;
-    }
-
-    paletteWindow = new BrowserWindow({
-      ...getWindowOptions(),
+    return createChildWindow({
+      getWindow: () => paletteWindow,
+      setWindow: (win) => {
+        paletteWindow = win;
+      },
+      htmlFile: 'palette-window.html',
+      title: 'WASRTK Palette Editor',
       width: 820,
       height: 760,
       minWidth: 640,
-      minHeight: 560,
-      parent: mainWindow || undefined,
-      title: 'WASRTK Palette Editor',
-      show: false
+      minHeight: 560
     });
-
-    paletteWindow.removeMenu();
-    paletteWindow.loadFile(path.resolve(__dirname, '../../palette-window.html'));
-
-    paletteWindow.once('ready-to-show', () => {
-      paletteWindow.show();
-    });
-
-    paletteWindow.on('closed', () => {
-      paletteWindow = null;
-    });
-
-    if (process.argv.includes('--dev')) {
-      paletteWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-
-    return paletteWindow;
   }
 
   return {

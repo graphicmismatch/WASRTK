@@ -1,12 +1,9 @@
 const { ipcRenderer } = require('electron');
 const { THEME_FIELDS, applyTheme, initializeThemeSync } = require('./theme');
+const { hexToRgb, rgbToHex } = require('./color-utils');
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
-}
-
-function channelToHex(value) {
-  return clamp(value, 0, 255).toString(16).padStart(2, '0');
 }
 
 function rgbaStringFromParts({ r, g, b, a }) {
@@ -35,7 +32,7 @@ function parseColorValue(value) {
 
     return {
       format: parts.length === 4 ? 'rgba' : 'rgb',
-      hex: `#${channelToHex(red)}${channelToHex(green)}${channelToHex(blue)}`,
+      hex: rgbToHex(red, green, blue),
       alpha: parsedAlpha
     };
   }
@@ -91,10 +88,8 @@ function collectThemeFromControls(currentTheme) {
       const alphaInput = document.querySelector(`[data-theme-alpha-key="${key}"]`);
       const alpha = alphaInput ? Number(alphaInput.value) / 100 : 1;
       const { hex } = parseColorValue(input.value);
-      const red = parseInt(hex.slice(1, 3), 16);
-      const green = parseInt(hex.slice(3, 5), 16);
-      const blue = parseInt(hex.slice(5, 7), 16);
-      accumulator[key] = rgbaStringFromParts({ r: red, g: green, b: blue, a: alpha });
+      const { r, g, b } = hexToRgb(hex) || { r: 0, g: 0, b: 0 };
+      accumulator[key] = rgbaStringFromParts({ r, g, b, a: alpha });
       return accumulator;
     }
 

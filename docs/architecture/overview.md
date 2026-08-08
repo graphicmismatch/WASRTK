@@ -8,12 +8,12 @@ WASRTK is a two-process Electron application with most editor behavior implement
 
 Responsible for:
 
-- Creating the main window and theme window
+- Creating the main window, theme settings window, and palette editor window
 - Building the application menu
 - Handling file dialogs
 - Reading and writing files
 - Listing desktop capture sources
-- Loading, saving, and resetting theme config
+- Loading, saving, and resetting theme config; loading, saving, and deleting palette config
 
 ### Renderer process
 
@@ -36,11 +36,28 @@ Electron app
 │   ├── src/main/window.js
 │   ├── src/main/menu.js
 │   ├── src/main/ipc.js
-│   └── src/main/theme-config.js
+│   ├── src/main/json-config-store.js
+│   ├── src/main/theme-config.js
+│   └── src/main/palette-config.js
 └── renderer.js
     └── src/renderer/index.js
         └── src/renderer/wasrtk.js
+            ├── src/renderer/history.js
+            ├── src/renderer/selection-manager.js
+            │   ├── src/renderer/selection-geometry.js
+            │   └── src/renderer/selection-transforms.js
+            ├── src/renderer/brush-engine.js
+            ├── src/renderer/zoom.js
+            ├── src/renderer/status-bar.js
+            ├── src/renderer/palette-ui.js
+            ├── src/renderer/frame-manager.js
+            ├── src/renderer/layer-manager.js
+            ├── src/renderer/event-bindings.js
+            ├── src/renderer/canvas-engine.js
+            └── src/renderer/brush-settings.js
 ```
+
+See [Component Architecture](./components.md) for the full file inventory.
 
 ## Important architectural choices
 
