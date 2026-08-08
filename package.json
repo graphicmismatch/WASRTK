@@ -6,6 +6,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
+    "test": "node --test tests/unit/*.test.js",
+    "smoke": "electron . --smoke --no-sandbox",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
@@ -24,9 +26,6 @@
     "electron": "^13.1.7",
     "electron-builder": "^22.11.7"
   },
-  "dependencies": {
-    "gif.js": "^0.2.0"
-  },
   "build": {
     "appId": "com.wasrtk.app",
     "productName": "WASRTK",
@@ -35,9 +34,17 @@
       "buildResources": "assets"
     },
     "files": [
-      "**/*",
-      "!node_modules/**/*",
-      "!dist/**/*"
+      "main.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "palette-window.html",
+      "palette-window.js",
+      "theme-window.html",
+      "theme-window.js",
+      "src/**/*",
+      "vendor/**/*",
+      "assets/**/*"
     ],
     "extraResources": [
       {
@@ -49,8 +56,7 @@
       "category": "public.app-category.graphics-design"
     },
     "win": {
-      "target": "nsis",
-      "icon": "icon.png"
+      "target": "nsis"
     },
     "linux": {
       "target": "AppImage",

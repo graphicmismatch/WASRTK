@@ -9,7 +9,8 @@ The project currently depends on:
 
 - `electron@13.1.7`
 - `electron-builder@22.11.7`
-- `gif.js@0.2.0`
+
+GIF export uses a vendored copy of `gif.js`/`gif.worker.js` (`vendor/gif/`) rather than an npm dependency, so packaged builds work without shipping `node_modules`.
 
 ## Install
 
@@ -35,31 +36,34 @@ Useful variants:
 
 ## Project structure
 
-- `main.js`: Electron bootstrap
+Quick orientation for a first-time setup — for the full, current file-by-file
+inventory (all `src/main/` and `src/renderer/` modules, tool modules, and
+shared factories), see [Component Architecture](../architecture/components.md),
+which is the canonical source.
+
+- `main.js`: Electron bootstrap (main window, IPC handlers, menu, `--smoke` harness)
 - `renderer.js`: renderer bootstrap
-- `index.html`: main editor UI
-- `theme-window.html`: theme editor UI
-- `src/main/constants.js`: dialog filters, window defaults, thumbnail size
-- `src/main/window.js`: main window and theme window control
-- `src/main/menu.js`: application menus and accelerators
-- `src/main/ipc.js`: filesystem, theme, and screen-source IPC handlers
-- `src/main/theme-config.js`: theme persistence and sanitization
-- `src/renderer/wasrtk.js`: main editor class and app state
-- `src/renderer/project-io.js`: project serialization and hydration
-- `src/renderer/exporters.js`: PNG sequence and GIF export
-- `src/renderer/tools/`: tool modules loaded dynamically at runtime
-- `src/renderer/reference/`: reference image and screen-capture workflows
+- `index.html` / `theme-window.html` / `palette-window.html`: the main editor, theme editor, and palette editor UIs
+- `src/main/`: menus, IPC, window management, theme/palette config persistence
+- `src/renderer/`: the editor controller, tools, project I/O, exporters, references, and theming
+- `src/renderer/tools/`: tool modules loaded dynamically at runtime, plus shared factories in `tools/lib/`
+- `tests/unit/`: `node:test` unit suites; `tests/smoke/`: the Electron smoke harness
 
 ## Development workflow
 
 1. Install dependencies with `npm install`.
 2. Launch the app with `npm start` or `npm run dev`.
 3. Make changes.
-4. Validate manually in the running app.
-5. Build with `npm run build` if packaging behavior is affected.
+4. Run `npm test` and `npm run smoke` (see [Testing Guide](./testing.md)).
+5. Validate manually in the running app; run the relevant section(s) of the
+   [manual interaction checklist](../qa/manual-interaction-checklist.md)
+   for interaction-affecting changes.
+6. Build with `npm run build` if packaging behavior is affected.
 
 ## Current constraints
 
-- There is no automated test suite in this repo.
-- Documentation and manual verification are part of the normal change workflow.
+- Automated coverage is a `node:test` unit suite plus an Electron smoke
+  harness (`npm test`, `npm run smoke`) — see [Testing Guide](./testing.md).
+  It does not replace manual verification for interaction-heavy changes.
+- Documentation and manual verification are still part of the normal change workflow.
 - The renderer runs with `nodeIntegration: true` and `contextIsolation: false`, so code changes should be reviewed with that trust model in mind.

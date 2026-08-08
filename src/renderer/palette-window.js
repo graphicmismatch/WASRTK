@@ -1,40 +1,11 @@
 const path = require('path');
 const { ipcRenderer } = require('electron');
 const { initializeThemeSync } = require('./theme');
+const { normalizeHexColor, dedupeColors, rgbToHex } = require('./color-utils');
 
 let paletteEditorColors = [];
 let existingPalettes = {};
 let currentEditingPaletteId = null;
-
-function normalizeHexColor(value) {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const cleaned = value.trim().replace(/^#/, '').toLowerCase();
-  if (/^[0-9a-f]{3}$/.test(cleaned)) {
-    return `#${cleaned.split('').map((char) => char + char).join('')}`;
-  }
-  if (/^[0-9a-f]{6}$/.test(cleaned)) {
-    return `#${cleaned}`;
-  }
-
-  return null;
-}
-
-function dedupeColors(colors) {
-  const unique = [];
-  const seen = new Set();
-  colors.forEach((color) => {
-    const normalized = normalizeHexColor(color);
-    if (!normalized || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    unique.push(normalized);
-  });
-  return unique;
-}
 
 function parseHexLikeText(content) {
   const matches = content.match(/#?[0-9a-fA-F]{6}\b|#?[0-9a-fA-F]{3}\b/g) || [];
@@ -51,7 +22,7 @@ function parseGimpPalette(content) {
     if (channels.length < 3 || channels.some((value) => Number.isNaN(value))) {
       return;
     }
-    const hex = `#${channels.map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
+    const hex = rgbToHex(channels[0], channels[1], channels[2]);
     colors.push(hex);
   });
   return dedupeColors(colors);
@@ -69,7 +40,8 @@ function parseJascPal(content) {
     if (channels.length < 3 || channels.some((value) => Number.isNaN(value))) {
       continue;
     }
-    const hex = `#${channels.slice(0, 3).map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')).join('')}`;
+    const [channelR, channelG, channelB] = channels;
+    const hex = rgbToHex(channelR, channelG, channelB);
     colors.push(hex);
   }
   return dedupeColors(colors);
@@ -211,7 +183,7 @@ async function importPaletteFromImageFile(file) {
     const red = Math.round(data[index] / 8) * 8;
     const green = Math.round(data[index + 1] / 8) * 8;
     const blue = Math.round(data[index + 2] / 8) * 8;
-    const hex = `#${[red, green, blue].map((channel) => Math.max(0, Math.min(255, channel)).toString(16).padStart(2, '0')).join('')}`;
+    const hex = rgbToHex(red, green, blue);
     colorFrequency.set(hex, (colorFrequency.get(hex) || 0) + 1);
   }
   URL.revokeObjectURL(imageUrl);

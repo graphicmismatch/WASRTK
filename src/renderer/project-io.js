@@ -1,3 +1,6 @@
+const { clampNumber } = require('./math-utils');
+const { BRUSH_PRESETS, SELECTION_MODES, ZOOM_MIN, ZOOM_MAX } = require('./constants');
+
 function parseProjectJson(rawData) {
   let jsonString = rawData;
 
@@ -114,18 +117,30 @@ async function buildFramesFromProject({
 
 function normalizeProjectSettings(settings = {}) {
   return {
-    fps: settings.fps || 12,
+    fps: Math.round(clampNumber(settings.fps, 12, 1, 60)),
     onionSkinningEnabled: settings.onionSkinningEnabled || false,
-    onionSkinningRange: settings.onionSkinningRange || 3,
-    referenceOpacity: settings.referenceOpacity || 0.5,
+    onionSkinningRange: Math.round(clampNumber(settings.onionSkinningRange, 3, 1, 10)),
+    referenceOpacity: clampNumber(settings.referenceOpacity, 0.5, 0, 1),
     referenceVisible: settings.referenceVisible || false,
     antialiasingEnabled: settings.antialiasingEnabled !== undefined ? settings.antialiasingEnabled : true,
     currentTool: settings.currentTool || 'pen',
     currentColor: settings.currentColor || '#000000',
-    currentOpacity: settings.currentOpacity || 1.0,
-    brushSize: settings.brushSize || 1,
-    brushShape: settings.brushShape || 'circle',
-    zoom: settings.zoom || 1
+    currentOpacity: clampNumber(settings.currentOpacity, 1, 0, 1),
+    brushSize: Math.round(clampNumber(settings.brushSize, 1, 1, 100)),
+    brushShape: settings.brushShape === 'square' ? 'square' : 'circle',
+    brushPreset: BRUSH_PRESETS.includes(settings.brushPreset) ? settings.brushPreset : 'hard-round',
+    brushFlow: clampNumber(settings.brushFlow, 1, 0.01, 1),
+    brushSpacing: clampNumber(settings.brushSpacing, 0.25, 0.01, 1),
+    pressureSensitivityEnabled: settings.pressureSensitivityEnabled !== undefined ? settings.pressureSensitivityEnabled : true,
+    pressureAffectsSize: settings.pressureAffectsSize !== undefined ? settings.pressureAffectsSize : true,
+    pressureAffectsFlow: settings.pressureAffectsFlow !== undefined ? settings.pressureAffectsFlow : true,
+    selectionMode: SELECTION_MODES.includes(settings.selectionMode) ? settings.selectionMode : 'rectangle',
+    selectionAntialias: settings.selectionAntialias !== undefined ? settings.selectionAntialias : true,
+    selectionFeather: Math.round(clampNumber(settings.selectionFeather, 0, 0, 10)),
+    fillTolerance: Math.round(clampNumber(settings.fillTolerance, 0, 0, 255)),
+    fillContiguous: settings.fillContiguous !== undefined ? settings.fillContiguous : true,
+    fillSampleAllLayers: settings.fillSampleAllLayers || false,
+    zoom: clampNumber(settings.zoom, 1, ZOOM_MIN, ZOOM_MAX)
   };
 }
 

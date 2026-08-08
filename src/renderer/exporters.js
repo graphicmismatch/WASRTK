@@ -66,7 +66,7 @@ function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas,
       quality: 10,
       width,
       height,
-      workerScript: './node_modules/gif.js/dist/gif.worker.js',
+      workerScript: './vendor/gif/gif.worker.js',
       transparent: null,
       background: null,
       dither: false
@@ -105,6 +105,7 @@ function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas,
 
 module.exports = {
   getMimeType,
+  getFrameDelayMs,
   saveAsPngSequence,
   saveAsGif,
   drawVisibleLayersToContext

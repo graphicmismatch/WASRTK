@@ -1,18 +1,7 @@
-const fs = require('fs');
-const path = require('path');
 const { app } = require('electron');
+const { createJsonConfigStore } = require('./json-config-store');
 
 const PALETTE_FILE_NAME = 'palettes.json';
-
-function getPaletteConfigPath() {
-  return path.join(app.getPath('userData'), PALETTE_FILE_NAME);
-}
-
-function ensurePaletteDirectory() {
-  const configPath = getPaletteConfigPath();
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  return configPath;
-}
 
 function sanitizePaletteEntry(entry) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -58,34 +47,37 @@ function sanitizePalettes(input) {
   return sanitized;
 }
 
-function loadPaletteConfig() {
-  const configPath = ensurePaletteDirectory();
-  if (!fs.existsSync(configPath)) {
-    const defaultPayload = { palettes: {} };
-    fs.writeFileSync(configPath, JSON.stringify(defaultPayload, null, 2), 'utf8');
-    return { palettes: {}, path: configPath };
-  }
+// The file (and the store's `defaults`/`sanitize` contract) always deal in
+// the wrapped `{ palettes }` shape; the public API here deals in the bare
+// palettes map, so the wrapper functions translate between the two.
+function sanitizeConfig(raw) {
+  return { palettes: sanitizePalettes(raw && raw.palettes) };
+}
 
-  try {
-    const raw = fs.readFileSync(configPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    const palettes = sanitizePalettes(parsed.palettes);
-    return { palettes, path: configPath };
-  } catch (error) {
-    fs.writeFileSync(configPath, JSON.stringify({ palettes: {} }, null, 2), 'utf8');
-    return { palettes: {}, path: configPath, recoveredFromError: error.message };
+const store = createJsonConfigStore({
+  getDir: () => app.getPath('userData'),
+  fileName: PALETTE_FILE_NAME,
+  defaults: { palettes: {} },
+  sanitize: sanitizeConfig
+});
+
+function toPaletteResult(result) {
+  const output = { palettes: result.data.palettes, path: result.path };
+  if (result.recoveredFromError) {
+    output.recoveredFromError = result.recoveredFromError;
   }
+  return output;
+}
+
+function loadPaletteConfig() {
+  return toPaletteResult(store.load());
 }
 
 function savePaletteConfig(palettes) {
-  const configPath = ensurePaletteDirectory();
-  const sanitizedPalettes = sanitizePalettes(palettes);
-  fs.writeFileSync(configPath, JSON.stringify({ palettes: sanitizedPalettes }, null, 2), 'utf8');
-  return { palettes: sanitizedPalettes, path: configPath };
+  return toPaletteResult(store.save({ palettes }));
 }
 
 module.exports = {
   loadPaletteConfig,
-  savePaletteConfig,
-  getPaletteConfigPath
+  savePaletteConfig
 };

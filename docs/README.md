@@ -23,6 +23,7 @@ This directory documents the code and behavior that exist in the current reposit
 ## Features
 
 - [Drawing Tools](./features/drawing-tools.md)
+- [Palette Editor](./features/palette-editor.md)
 - [Timeline System](./features/timeline-system.md)
 
 ## API and formats
@@ -34,8 +35,14 @@ This directory documents the code and behavior that exist in the current reposit
 ## Development
 
 - [Setup](./development/setup.md)
+- [Testing Guide](./development/testing.md)
 - [Contributing](./development/contributing.md)
 - [First-Time Contributors](./development/first-time-contributors.md)
+
+## QA
+
+- [Manual Interaction Checklist](./qa/manual-interaction-checklist.md)
+- [Run logs](./qa/runs/) — dated results from completed manual checklist passes
 
 ## Specs
 

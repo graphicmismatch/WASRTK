@@ -4,6 +4,12 @@ const { app } = require('electron');
 
 const THUMBNAIL_SIZE = { width: 150, height: 150 };
 
+// Computed once here instead of re-parsing process.argv at each call site
+// that wants to know whether devtools should auto-open. Independent of the
+// `--smoke` flag (main.js) -- devtools must never open during a smoke run,
+// and `--smoke` must never imply `--dev`.
+const isDev = process.argv.includes('--dev');
+
 const FILE_FILTERS = {
   image: [
     { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp'] },
@@ -29,7 +35,6 @@ function getWindowOptions(baseDir) {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      enableRemoteModule: true,
       webSecurity: false,
       allowRunningInsecureContent: true
     },
@@ -51,5 +56,6 @@ function getWindowOptions(baseDir) {
 module.exports = {
   THUMBNAIL_SIZE,
   FILE_FILTERS,
-  getWindowOptions
+  getWindowOptions,
+  isDev
 };

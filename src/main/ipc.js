@@ -1,8 +1,8 @@
 const fs = require('fs');
 const { ipcMain, desktopCapturer } = require('electron');
 const { THUMBNAIL_SIZE } = require('./constants');
-const { loadThemeConfig, saveThemeConfig, resetThemeConfig, getThemeConfigPath } = require('./theme-config');
-const { loadPaletteConfig, savePaletteConfig, getPaletteConfigPath } = require('./palette-config');
+const { loadThemeConfig, saveThemeConfig, resetThemeConfig } = require('./theme-config');
+const { loadPaletteConfig, savePaletteConfig } = require('./palette-config');
 
 function mapScreenSource(source) {
   return {
@@ -14,33 +14,62 @@ function mapScreenSource(source) {
   };
 }
 
-async function getScreenSources(types) {
-  const sources = await desktopCapturer.getSources({
-    types,
-    thumbnailSize: THUMBNAIL_SIZE
-  });
+async function getScreenSources(types, { errorLabel = '' } = {}) {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types,
+      thumbnailSize: THUMBNAIL_SIZE
+    });
 
-  return sources.map(mapScreenSource);
+    return sources.map(mapScreenSource);
+  } catch (error) {
+    console.error(`Error getting screen sources${errorLabel}:`, error);
+    throw error;
+  }
 }
 
 function registerScreenCaptureHandlers() {
-  ipcMain.handle('get-screen-sources', async () => {
+  ipcMain.handle('get-screen-sources', () => getScreenSources(['screen', 'window']));
+  ipcMain.handle('get-screen-sources-fallback', () => getScreenSources(['screen'], { errorLabel: ' (fallback)' }));
+}
+
+// Collapses the repeated try/catch -> {success, error} envelope shared by
+// the file-read/write handlers below. The guard checks and success-shape
+// construction stay per-handler since they differ (e.g. save-file's
+// canceled response vs read-file/read-binary-file's error message).
+function handleWithEnvelope(channel, fn) {
+  ipcMain.handle(channel, async (event, ...args) => {
     try {
-      return await getScreenSources(['screen', 'window']);
+      return await fn(event, ...args);
     } catch (error) {
-      console.error('Error getting screen sources:', error);
-      throw error;
+      return { success: false, error: error.message };
     }
+  });
+}
+
+// Registers the 2-3 channel block shared by the theme and palette config
+// stores: `load-<prefix>-config`, `save-<prefix>-config` (broadcasting via
+// onUpdated), and an optional `reset-<prefix>-config`.
+function registerConfigChannels({ prefix, load, save, reset, onUpdated }) {
+  ipcMain.handle(`load-${prefix}-config`, async () => load());
+
+  ipcMain.handle(`save-${prefix}-config`, async (event, data) => {
+    const result = save(data);
+    if (typeof onUpdated === 'function') {
+      onUpdated(result);
+    }
+    return result;
   });
 
-  ipcMain.handle('get-screen-sources-fallback', async () => {
-    try {
-      return await getScreenSources(['screen']);
-    } catch (error) {
-      console.error('Error getting screen sources (fallback):', error);
-      throw error;
-    }
-  });
+  if (reset) {
+    ipcMain.handle(`reset-${prefix}-config`, async () => {
+      const result = reset();
+      if (typeof onUpdated === 'function') {
+        onUpdated(result);
+      }
+      return result;
+    });
+  }
 }
 
 function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPaletteEditor } = {}) {
@@ -48,75 +77,53 @@ function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPalette
     return typeof filePath === 'string' && filePath.trim().length > 0;
   }
 
-  ipcMain.handle('save-file', async (event, { filePath, data }) => {
+  handleWithEnvelope('save-file', async (event, { filePath, data }) => {
     if (!hasValidFilePath(filePath)) {
       return { success: false, canceled: true };
     }
 
-    try {
-      fs.writeFileSync(filePath, data);
-      return { success: true, path: filePath };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    fs.writeFileSync(filePath, data);
+    return { success: true, path: filePath };
   });
 
-  ipcMain.handle('read-file', async (event, filePath) => {
+  handleWithEnvelope('read-file', async (event, filePath) => {
     if (!hasValidFilePath(filePath)) {
       return { success: false, error: 'Invalid file path.' };
     }
 
-    try {
-      const data = fs.readFileSync(filePath, 'utf8');
-      return { success: true, data };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    const data = fs.readFileSync(filePath, 'utf8');
+    return { success: true, data };
   });
 
-  ipcMain.handle('read-binary-file', async (event, filePath) => {
+  handleWithEnvelope('read-binary-file', async (event, filePath) => {
     if (!hasValidFilePath(filePath)) {
       return { success: false, error: 'Invalid file path.' };
     }
 
-    try {
-      const data = fs.readFileSync(filePath);
-      return { success: true, data: data.toString('base64') };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    const data = fs.readFileSync(filePath);
+    return { success: true, data: data.toString('base64') };
   });
 
-  ipcMain.handle('load-theme-config', async () => loadThemeConfig());
-  ipcMain.handle('save-theme-config', async (event, theme) => {
-    const result = saveThemeConfig(theme);
-    if (typeof onThemeUpdated === 'function') {
-      onThemeUpdated(result);
-    }
-    return result;
+  registerConfigChannels({
+    prefix: 'theme',
+    load: loadThemeConfig,
+    save: saveThemeConfig,
+    reset: resetThemeConfig,
+    onUpdated: onThemeUpdated
   });
-  ipcMain.handle('reset-theme-config', async () => {
-    const result = resetThemeConfig();
-    if (typeof onThemeUpdated === 'function') {
-      onThemeUpdated(result);
-    }
-    return result;
-  });
-  ipcMain.handle('get-theme-config-path', async () => getThemeConfigPath());
 
-  ipcMain.handle('load-palettes-config', async () => loadPaletteConfig());
-  ipcMain.handle('save-palettes-config', async (event, palettes) => {
-    const result = savePaletteConfig(palettes);
-    if (typeof onPalettesUpdated === 'function') {
-      onPalettesUpdated(result);
-    }
-    return result;
+  registerConfigChannels({
+    prefix: 'palettes',
+    load: loadPaletteConfig,
+    save: savePaletteConfig,
+    onUpdated: onPalettesUpdated
   });
-  ipcMain.handle('get-palettes-config-path', async () => getPaletteConfigPath());
+
   ipcMain.handle('open-palette-editor-window', async () => {
-    if (typeof onOpenPaletteEditor === 'function') {
-      onOpenPaletteEditor();
+    if (typeof onOpenPaletteEditor !== 'function') {
+      return { success: false };
     }
+    onOpenPaletteEditor();
     return { success: true };
   });
 }

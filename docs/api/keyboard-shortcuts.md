@@ -37,6 +37,7 @@ This page documents shortcuts that are actually wired in the current repository,
 ## View
 
 - `Ctrl/Cmd+Alt+T`: Open Theme Settings
+- `Ctrl/Cmd+Alt+P`: Open Palette Editor (see [Palette Editor](../features/palette-editor.md))
 
 Standard Electron view roles are also present for reload, force reload, DevTools, and window zoom.
 
