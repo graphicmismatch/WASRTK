@@ -34,7 +34,7 @@ function getFrameDelayMs(fps) {
 
 async function saveAsPngSequence({ filePath, frames, width, height, invoke, createCanvas }) {
   const dir = path.dirname(filePath);
-  const baseName = path.basename(filePath, '.png');
+  const baseName = path.basename(filePath, path.extname(filePath));
 
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i];
