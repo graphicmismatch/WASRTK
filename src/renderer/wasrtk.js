@@ -1238,20 +1238,24 @@ class WASRTK {
     }
 
     async saveAnimation(filePath) {
-        const fileExtension = path.extname(filePath).toLowerCase();
+        // The native save dialog doesn't always append an extension (notably
+        // on Linux/GTK), so a bare path here defaults to PNG sequence -- the
+        // first/default entry in the animationSave filter list.
+        const fileExtension = path.extname(filePath).toLowerCase() || '.png';
+        const targetPath = path.extname(filePath) ? filePath : `${filePath}${fileExtension}`;
 
         try {
             switch (fileExtension) {
                 case '.png':
-                    await this.saveAsPngSequence(filePath);
+                    await this.saveAsPngSequence(targetPath);
                     break;
                 case '.gif':
-                    await this.saveAsGif(filePath);
+                    await this.saveAsGif(targetPath);
                     break;
                 default:
                     throw new Error(`Unsupported file format: ${fileExtension}`);
             }
-            alert(`File saved successfully to ${filePath}`);
+            alert(`File saved successfully to ${targetPath}`);
         } catch (error) {
             console.error('Failed to save animation:', error);
             alert(`Error saving file: ${error.message}`);
