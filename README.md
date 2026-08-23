@@ -69,7 +69,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 ### Phase 2 — Layering and composition
 
 - [ ] Add layer groups/folders with collapse/expand, locking, and group visibility controls.
-- [ ] Add blend modes (Normal, Multiply, Screen, Overlay, etc.) and per-layer opacity.
+- [x] Add blend modes (Normal, Multiply, Screen, Overlay, etc.) and per-layer opacity. **Done**
 - [ ] Add adjustment layers (levels, curves, hue/saturation, brightness/contrast).
 - [ ] Add clipping masks and alpha-lock workflows for targeted painting.
 - [ ] Add smart guides, rulers, and snapping for precise layout alignment.

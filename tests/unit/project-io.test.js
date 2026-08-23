@@ -12,6 +12,7 @@ const {
   validateProjectData,
   buildProjectData,
   serializeProjectData,
+  buildFramesFromProject,
   normalizeProjectSettings
 } = require('../../src/renderer/project-io');
 
@@ -115,8 +116,13 @@ describe('buildProjectData / serializeProjectData round trip', () => {
     assert.equal(built.frames[0].layers[0].data, 'data:image/png;base64,bg');
     // layer.canvas itself must not leak into the serialized frame layer
     assert.equal('canvas' in built.frames[0].layers[0], false);
+    // opacity/blendMode default when absent from the source layer
+    assert.equal(built.frames[0].layers[0].opacity, 1);
+    assert.equal(built.frames[0].layers[0].blendMode, 'source-over');
 
-    assert.deepEqual(built.layers, [{ id: 0, name: 'Background', visible: true, locked: false }]);
+    assert.deepEqual(built.layers, [
+      { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over' }
+    ]);
 
     assert.equal(built.metadata.author, 'WASRTK');
     assert.equal(built.metadata.description, 'WASRTK pixel art and animation project');
@@ -158,6 +164,74 @@ describe('buildProjectData / serializeProjectData round trip', () => {
     assert.deepEqual(roundTripped, built);
     // The round-tripped data should still satisfy validation.
     assert.doesNotThrow(() => validateProjectData(roundTripped));
+  });
+});
+
+describe('layer opacity / blendMode', () => {
+  function fakeCanvas(label) {
+    return { toDataURL: (type) => `data:${type};base64,${label}` };
+  }
+
+  test('buildProjectData carries custom opacity/blendMode through unchanged', () => {
+    const input = {
+      frames: [{
+        id: 0,
+        name: 'Frame 1',
+        timestamp: 111,
+        layers: [
+          { id: 0, name: 'BG', visible: true, locked: false, opacity: 0.5, blendMode: 'multiply', canvas: fakeCanvas('bg') }
+        ]
+      }],
+      layers: [{ id: 0, name: 'BG', visible: true, locked: false, opacity: 0.5, blendMode: 'multiply' }],
+      canvas: { width: 8, height: 8 },
+      settings: {}
+    };
+
+    const built = buildProjectData(input);
+    assert.equal(built.frames[0].layers[0].opacity, 0.5);
+    assert.equal(built.frames[0].layers[0].blendMode, 'multiply');
+    assert.equal(built.layers[0].opacity, 0.5);
+    assert.equal(built.layers[0].blendMode, 'multiply');
+  });
+
+  async function buildLoadedFrames(layerDataOverrides) {
+    const projectData = {
+      frames: [{
+        id: 0,
+        name: 'Frame 1',
+        timestamp: 111,
+        layers: [{ id: 0, name: 'BG', visible: true, locked: false, ...layerDataOverrides }]
+      }]
+    };
+
+    return buildFramesFromProject({
+      projectData,
+      width: 4,
+      height: 4,
+      createCanvas: () => ({ width: 4, height: 4, getContext: () => ({}) }),
+      loadImageToCanvas: async () => {},
+      applyImageSmoothing: () => {},
+      fillFallbackLayer: () => {}
+    });
+  }
+
+  test('buildFramesFromProject clamps out-of-range opacity and defaults when missing', async () => {
+    const withOpacity = await buildLoadedFrames({ opacity: 5 });
+    assert.equal(withOpacity[0].layers[0].opacity, 1);
+
+    const missingOpacity = await buildLoadedFrames({});
+    assert.equal(missingOpacity[0].layers[0].opacity, 1);
+  });
+
+  test('buildFramesFromProject falls back to source-over for an unknown blendMode', async () => {
+    const knownMode = await buildLoadedFrames({ blendMode: 'screen' });
+    assert.equal(knownMode[0].layers[0].blendMode, 'screen');
+
+    const unknownMode = await buildLoadedFrames({ blendMode: 'not-a-real-mode' });
+    assert.equal(unknownMode[0].layers[0].blendMode, 'source-over');
+
+    const missingMode = await buildLoadedFrames({});
+    assert.equal(missingMode[0].layers[0].blendMode, 'source-over');
   });
 });
 

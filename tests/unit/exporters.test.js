@@ -112,6 +112,31 @@ describe('drawVisibleLayersToContext', () => {
     assert.doesNotThrow(() => drawVisibleLayersToContext(ctx, undefined));
     assert.equal(ctx.calls.length, 0);
   });
+
+  test('applies each layer\'s opacity and blend mode, defaulting when absent, and never dims for lock', () => {
+    const ctx = fakeCtx();
+    const seenAlpha = [];
+    const seenComposite = [];
+    const originalDrawImage = ctx.drawImage.bind(ctx);
+    ctx.drawImage = (...args) => {
+      seenAlpha.push(ctx.globalAlpha);
+      seenComposite.push(ctx.globalCompositeOperation);
+      originalDrawImage(...args);
+    };
+
+    const layerA = { visible: true, canvas: 'canvas-A', opacity: 0.4, blendMode: 'multiply', locked: true };
+    const layerB = { visible: true, canvas: 'canvas-B' }; // no opacity/blendMode -> defaults
+
+    drawVisibleLayersToContext(ctx, { layers: [layerA, layerB] });
+
+    // seenAlpha[0] is 0.4, not 0.2 -- locked must not dim exported alpha,
+    // that 0.5 multiplier is an editor-only affordance.
+    assert.deepEqual(seenAlpha, [0.4, 1]);
+    assert.deepEqual(seenComposite, ['multiply', 'source-over']);
+    // State is reset after the loop so a reused context isn't left dirty.
+    assert.equal(ctx.globalAlpha, 1);
+    assert.equal(ctx.globalCompositeOperation, 'source-over');
+  });
 });
 
 describe('saveAsGif', () => {

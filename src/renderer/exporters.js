@@ -25,9 +25,17 @@ function drawVisibleLayersToContext(targetCtx, frame) {
 
   layers.forEach((layer) => {
     if (layer.visible) {
+      // No locked-layer dim here -- that 0.5 alpha in the editor's render
+      // loop is an edit-lock affordance, not project data, and must not
+      // leak into exported output.
+      targetCtx.globalAlpha = layer.opacity ?? 1;
+      targetCtx.globalCompositeOperation = layer.blendMode || 'source-over';
       targetCtx.drawImage(layer.canvas, 0, 0);
     }
   });
+
+  targetCtx.globalAlpha = 1;
+  targetCtx.globalCompositeOperation = 'source-over';
 }
 
 function getFrameDelayMs(fps) {

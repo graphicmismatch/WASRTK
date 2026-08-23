@@ -20,6 +20,8 @@
 //   saveStructureState()
 //   renderCurrentFrame()
 //   updateStatusBar()
+const { BLEND_MODES } = require('./constants');
+
 function createLayerManager(env) {
     function addLayer() {
         if (env.getActiveSelection()) env.clearSelection();
@@ -29,7 +31,9 @@ function createLayerManager(env) {
             id: layers.length,
             name: `Layer ${layers.length + 1}`,
             visible: true,
-            locked: false
+            locked: false,
+            opacity: 1,
+            blendMode: 'source-over'
         };
 
         layers.push(newLayer);
@@ -48,6 +52,8 @@ function createLayerManager(env) {
                 name: newLayer.name,
                 visible: newLayer.visible,
                 locked: newLayer.locked,
+                opacity: newLayer.opacity,
+                blendMode: newLayer.blendMode,
                 canvas: layerCanvas
             });
         });
@@ -165,13 +171,25 @@ function createLayerManager(env) {
             layerElement.className = `layer-item ${index === env.getCurrentLayer() ? 'active' : ''}`;
             layerElement.dataset.layer = index;
 
+            const opacityPercent = Math.round((layer.opacity ?? 1) * 100);
+            const blendOptions = BLEND_MODES.map(mode =>
+                `<option value="${mode.value}" ${mode.value === (layer.blendMode || 'source-over') ? 'selected' : ''}>${mode.label}</option>`
+            ).join('');
+
             layerElement.innerHTML = `
-                <div class="layer-info">
-                    <span class="layer-name">${layer.name}</span>
-                    ${index === env.getCurrentLayer() ? '<i class="fas fa-pencil-alt layer-indicator"></i>' : ''}
+                <div class="layer-item-header">
+                    <div class="layer-info">
+                        <span class="layer-name">${layer.name}</span>
+                        ${index === env.getCurrentLayer() ? '<i class="fas fa-pencil-alt layer-indicator"></i>' : ''}
+                    </div>
+                    <div class="layer-visibility">
+                        <i class="fas fa-${layer.visible ? 'eye' : 'eye-slash'}"></i>
+                    </div>
                 </div>
-                <div class="layer-visibility">
-                    <i class="fas fa-${layer.visible ? 'eye' : 'eye-slash'}"></i>
+                <div class="layer-controls-row">
+                    <select class="layer-blend-select" title="Blend mode">${blendOptions}</select>
+                    <input type="range" class="layer-opacity-slider slider" min="0" max="100" value="${opacityPercent}" title="Opacity">
+                    <span class="layer-opacity-value">${opacityPercent}%</span>
                 </div>
             `;
 
@@ -179,6 +197,30 @@ function createLayerManager(env) {
             visibilityToggle.addEventListener('click', (e) => {
                 e.stopPropagation(); // Prevent layer selection when toggling visibility
                 toggleLayerVisibility(index);
+            });
+
+            const controlsRow = layerElement.querySelector('.layer-controls-row');
+            controlsRow.addEventListener('click', (e) => e.stopPropagation()); // Don't select layer when using its controls
+
+            const blendSelect = layerElement.querySelector('.layer-blend-select');
+            blendSelect.addEventListener('change', (e) => setLayerBlendMode(index, e.target.value));
+
+            const opacitySlider = layerElement.querySelector('.layer-opacity-slider');
+            const opacityValue = layerElement.querySelector('.layer-opacity-value');
+            let opacityDragSaved = false;
+            opacitySlider.addEventListener('pointerdown', () => {
+                if (!opacityDragSaved) {
+                    env.saveStructureState(); // One undo entry per drag, not per tick
+                    opacityDragSaved = true;
+                }
+            });
+            opacitySlider.addEventListener('input', (e) => {
+                opacityValue.textContent = `${e.target.value}%`;
+                // pointerdown above already saved one undo entry for this drag.
+                setLayerOpacity(index, Number(e.target.value) / 100, { save: false });
+            });
+            opacitySlider.addEventListener('change', () => {
+                opacityDragSaved = false;
             });
 
             layerElement.addEventListener('click', () => selectLayer(index));
@@ -215,6 +257,34 @@ function createLayerManager(env) {
         env.renderCurrentFrame();
     }
 
+    function setLayerOpacity(layerIndex, opacity, { save = true } = {}) {
+        if (save) env.saveStructureState(); // Save for undo, unless the caller already did (e.g. slider drag start)
+
+        const layers = env.getLayers();
+        layers[layerIndex].opacity = opacity;
+
+        env.getFrames().forEach(frame => {
+            const layer = frame.layers[layerIndex];
+            if (layer) layer.opacity = opacity;
+        });
+
+        env.renderCurrentFrame();
+    }
+
+    function setLayerBlendMode(layerIndex, blendMode) {
+        env.saveStructureState(); // Save for undo -- discrete action, like toggleLayerVisibility
+
+        const layers = env.getLayers();
+        layers[layerIndex].blendMode = blendMode;
+
+        env.getFrames().forEach(frame => {
+            const layer = frame.layers[layerIndex];
+            if (layer) layer.blendMode = blendMode;
+        });
+
+        env.renderCurrentFrame();
+    }
+
     return {
         addLayer,
         deleteLayer,
@@ -223,7 +293,9 @@ function createLayerManager(env) {
         flattenLayer,
         updateLayerList,
         selectLayer,
-        toggleLayerVisibility
+        toggleLayerVisibility,
+        setLayerOpacity,
+        setLayerBlendMode
     };
 }
 

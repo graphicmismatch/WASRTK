@@ -1,8 +1,9 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
-const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov, drawVisibleLayersToContext } = require('./exporters');
+const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov } = require('./exporters');
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
 const { clampNumber } = require('./math-utils');
+const { BLEND_MODES } = require('./constants');
 const { loadTools } = require('./tools');
 const reference = require('./reference');
 const { dedupeColors, hexToRgb, rgbToHex } = require('./color-utils');
@@ -201,7 +202,6 @@ class WASRTK {
             mainCanvas,
             mainCtx,
             createLayerCanvas,
-            drawVisibleLayersToContext,
             applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
             clearSelection: () => this.clearSelection(),
             saveStructureState: () => this.saveStructureState(),
@@ -584,6 +584,8 @@ class WASRTK {
             name: 'Background',
             visible: true,
             locked: false,
+            opacity: 1,
+            blendMode: 'source-over',
             canvas: initialLayerCanvas
         };
 
@@ -594,7 +596,7 @@ class WASRTK {
 
     initializeLayers() {
         layers = [
-            { id: 0, name: 'Background', visible: true, locked: false }
+            { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over' }
         ];
         this.updateLayerList();
     }
@@ -1093,6 +1095,14 @@ class WASRTK {
         this._layerManager.toggleLayerVisibility(layerIndex);
     }
 
+    setLayerOpacity(layerIndex, opacity) {
+        this._layerManager.setLayerOpacity(layerIndex, opacity);
+    }
+
+    setLayerBlendMode(layerIndex, blendMode) {
+        this._layerManager.setLayerBlendMode(layerIndex, blendMode);
+    }
+
     updateStatusBar() {
         this._statusBar.updateStatusBar();
     }
@@ -1482,7 +1492,9 @@ class WASRTK {
                 id: layerData.id,
                 name: layerData.name,
                 visible: layerData.visible,
-                locked: layerData.locked
+                locked: layerData.locked,
+                opacity: clampNumber(layerData.opacity, 1, 0, 1),
+                blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over'
             }));
 
             const settings = normalizeProjectSettings(projectData.settings);

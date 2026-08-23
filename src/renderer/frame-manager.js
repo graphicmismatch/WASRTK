@@ -25,7 +25,6 @@
 //                                       -- project settings read by addFrame
 //   mainCanvas, mainCtx                -- canvas elements/context
 //   createLayerCanvas                  -- shared layer-canvas factory
-//   drawVisibleLayersToContext         -- from exporters.js
 //   applyImageSmoothing(ctx)
 //   clearSelection()
 //   saveStructureState()
@@ -215,10 +214,13 @@ function createFrameManager(env) {
         // Draw layers of the current frame first
         frame.layers.forEach(layer => {
             if (layer.visible) {
-                env.mainCtx.globalAlpha = layer.locked ? 0.5 : 1.0;
+                const opacity = layer.opacity ?? 1;
+                env.mainCtx.globalAlpha = layer.locked ? opacity * 0.5 : opacity;
+                env.mainCtx.globalCompositeOperation = layer.blendMode || 'source-over';
                 env.mainCtx.drawImage(layer.canvas, 0, 0);
             }
         });
+        env.mainCtx.globalCompositeOperation = 'source-over';
         // Then, draw onion skinning on top
         if (env.getOnionSkinningEnabled()) {
             drawOnionSkinning();
@@ -246,8 +248,10 @@ function createFrameManager(env) {
         const scaleY = previewCanvas.height / env.mainCanvas.height;
         frame.layers.forEach(layer => {
             if (layer.visible) {
+                const opacity = layer.opacity ?? 1;
                 previewCtx.save();
-                previewCtx.globalAlpha = layer.locked ? 0.5 : 1.0;
+                previewCtx.globalAlpha = layer.locked ? opacity * 0.5 : opacity;
+                previewCtx.globalCompositeOperation = layer.blendMode || 'source-over';
                 previewCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
                 previewCtx.drawImage(layer.canvas, 0, 0);
                 previewCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -294,8 +298,17 @@ function createFrameManager(env) {
     }
 
     function drawFrameAsOnionSkin(frame, alpha) {
-        env.mainCtx.globalAlpha = alpha;
-        env.drawVisibleLayersToContext(env.mainCtx, frame);
+        // Not env.drawVisibleLayersToContext -- that helper now applies each
+        // layer's own opacity/blendMode (for export/sample-merge accuracy),
+        // which would overwrite the ghost alpha here. Onion skin wants a
+        // flat ghost blend combined with per-layer opacity, ignoring blend mode.
+        const layers = Array.isArray(frame?.layers) ? frame.layers : [];
+        layers.forEach((layer) => {
+            if (layer.visible) {
+                env.mainCtx.globalAlpha = alpha * (layer.opacity ?? 1);
+                env.mainCtx.drawImage(layer.canvas, 0, 0);
+            }
+        });
     }
 
     // UI update methods

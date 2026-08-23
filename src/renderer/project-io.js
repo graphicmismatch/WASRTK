@@ -1,5 +1,5 @@
 const { clampNumber } = require('./math-utils');
-const { BRUSH_PRESETS, SELECTION_MODES, ZOOM_MIN, ZOOM_MAX } = require('./constants');
+const { BRUSH_PRESETS, SELECTION_MODES, BLEND_MODES, ZOOM_MIN, ZOOM_MAX } = require('./constants');
 
 function parseProjectJson(rawData) {
   let jsonString = rawData;
@@ -42,6 +42,8 @@ function buildProjectData({
         name: layer.name,
         visible: layer.visible,
         locked: layer.locked,
+        opacity: layer.opacity ?? 1,
+        blendMode: layer.blendMode || 'source-over',
         data: layer.canvas.toDataURL('image/png')
       }))
     })),
@@ -49,7 +51,9 @@ function buildProjectData({
       id: layer.id,
       name: layer.name,
       visible: layer.visible,
-      locked: layer.locked
+      locked: layer.locked,
+      opacity: layer.opacity ?? 1,
+      blendMode: layer.blendMode || 'source-over'
     })),
     settings,
     metadata: {
@@ -105,6 +109,8 @@ async function buildFramesFromProject({
         name: layerData.name,
         visible: layerData.visible,
         locked: layerData.locked,
+        opacity: clampNumber(layerData.opacity, 1, 0, 1),
+        blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over',
         canvas
       });
     }
