@@ -10,7 +10,10 @@ This page is the canonical file inventory for WASRTK. Other docs (README,
 Application bootstrap. It creates the window controller, registers
 screen-capture/file/theme/palette IPC handlers, and installs the app menu
 when Electron is ready. Also wires up the `--smoke` self-test harness
-(see `docs/development/testing.md`).
+(see `docs/development/testing.md`), the crash-recovery prompt (skipped
+under `--smoke`, since a headless run must never block on a native
+dialog), and `app.on('before-quit', markCleanExit)` -- see
+`src/main/autosave-store.js`.
 
 ### `src/main/window.js`
 
@@ -20,7 +23,11 @@ Owns three windows and their shared helpers:
 - Theme settings window and palette editor window creation, through a
   single shared `createChildWindow(...)` helper (focus-if-open, else
   create/load/show)
-- File dialog helpers that send chosen paths back to the renderer
+- File dialog helpers that send chosen paths back to the renderer,
+  including `showRestoreBackupDialog` -- a plain file-open dialog
+  defaulted to the autosaves folder (`autosave-store.js`'s
+  `getAutosaveDir()`), reusing the existing `load-project` channel/listener
+  rather than a custom backup-list UI
 - Broadcast helpers: `sendThemeUpdate` (`theme-config-updated` to the main
   and theme windows) and `sendPaletteUpdate` (`palette-config-updated` to
   the main and palette editor windows)
@@ -39,6 +46,8 @@ Defines menu sections for:
 - Reference
 - Tools (one item per tool id, built from a small tool-list table)
 
+File also has a "Restore Backup..." item calling `showRestoreBackupDialog` directly.
+
 Most actions send IPC-driven commands into the renderer rather than mutating state directly in the main process.
 
 ### `src/main/ipc.js`
@@ -51,6 +60,7 @@ Registers `ipcMain.handle(...)` endpoints for:
 - Palette config load/save/path lookup, plus opening the palette editor window
 - Layout config load/save (floating panel positions/sizes)
 - Shortcuts config load/save (rebindable-action key overrides)
+- Autosave write (`save-autosave`) and backup listing (`list-autosaves`)
 
 Built on three shared helpers: `handleWithEnvelope` (try/catch ->
 `{ success, error }` envelope), `registerConfigChannels` (the theme/palette
@@ -95,6 +105,38 @@ shape as `palette-config.js`. Only overrides for actions the renderer's
 for a since-removed or non-rebindable action is silently inert rather
 than erroring.
 
+### `src/main/autosave-store.js`
+
+`createAutosaveStore({ getDir, maxAutosaves })` -- DI'd on `getDir` like
+`json-config-store.js`, so it's testable against a real temp directory
+without Electron (`tests/unit/autosave-store.test.js`). Manages two
+things in the same directory tree:
+
+- **Autosave backups**: timestamped `autosave-<ISO>.wasrtk` files under an
+  `autosaves/` subdirectory (filenames sort chronologically as plain
+  strings, since `:`/`.` are replaced with `-`). `writeAutosave(data)`
+  writes one and prunes down to `maxAutosaves` (default 8) via the pure,
+  separately-exported `selectFilesToPrune(fileNames, maxAutosaves)`.
+  `listAutosaves()` (newest-first, with `mtimeMs`) backs both the
+  crash-recovery check and the "Restore Backup..." file-open dialog
+  (`window.js`).
+- **Crash detection**: a tiny `autosave-meta.json` (via
+  `createJsonConfigStore`) holds `lastCleanExitAt`, written by
+  `markCleanExit()` -- called from `main.js`'s `before-quit` handler
+  (which does not fire on a crash or force-kill, only a graceful quit) and
+  from the smoke harness's own clean finish (so a smoke run's autosave
+  never causes a false crash-recovery prompt on the next real launch).
+  `checkForCrashRecovery()` compares the latest autosave's `mtimeMs`
+  against that timestamp, floored to whole milliseconds before comparing
+  since `mtimeMs` carries sub-millisecond precision that `Date.now()`
+  does not -- otherwise a write and a `markCleanExit()` landing in the
+  same millisecond could compare as "after" purely from float noise.
+
+The module exports both the DI'd factory (for tests) and a
+production instance pre-wired to `app.getPath('userData')`, following
+`layout-config.js`'s split between pure/testable and Electron-bound
+exports.
+
 ### `src/main/constants.js`
 
 Shared main-process constants: `THUMBNAIL_SIZE`, `FILE_FILTERS` (dialog
@@ -110,7 +152,19 @@ The main editor controller. It owns:
   field object)
 - IPC listeners (`setupIPCListeners`); DOM event wiring
   (`setupEventListeners`) is a one-line call into `event-bindings.js`
-- Project save/load (via `project-io.js`)
+- Project save/load (via `project-io.js`); `buildCurrentProjectData()`
+  factors out the payload shared by `saveProject` and `performAutosave`
+  (the settings snapshot is the same either way, just written to a
+  different place). A dirty flag (`_isDirty`) is set by every history
+  push/undo/redo/jump (`onHistoryChanged`, also what refreshes the
+  History panel) and cleared by a successful `saveProject`,
+  `performAutosave`, or `loadProject` -- `startAutosaveTimer()` (called
+  once in the constructor) fires `performAutosave()` on a fixed interval
+  only when dirty, so an idle app never writes redundant backups.
+  Crash recovery reuses the existing `load-project` IPC listener
+  unchanged -- `main.js` sends an autosave's path down that same channel
+  when the user accepts the recovery prompt, so a `.wasrtk` autosave
+  loads exactly like any other project file.
 - Thin delegator methods for the extracted subsystems below, so every
   method tools/reference code call by name (the duck-typed `app`
   interface) still exists on the class

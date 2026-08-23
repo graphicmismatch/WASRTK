@@ -5,6 +5,7 @@ const { loadThemeConfig, saveThemeConfig, resetThemeConfig } = require('./theme-
 const { loadPaletteConfig, savePaletteConfig } = require('./palette-config');
 const { loadLayoutConfig, saveLayoutConfig } = require('./layout-config');
 const { loadShortcutsConfig, saveShortcutsConfig } = require('./shortcuts-config');
+const { writeAutosave, listAutosaves } = require('./autosave-store');
 
 function mapScreenSource(source) {
   return {
@@ -132,6 +133,13 @@ function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPalette
     load: loadShortcutsConfig,
     save: saveShortcutsConfig
   });
+
+  handleWithEnvelope('save-autosave', async (event, data) => {
+    const filePath = writeAutosave(data);
+    return { success: true, path: filePath };
+  });
+
+  ipcMain.handle('list-autosaves', async () => listAutosaves());
 
   ipcMain.handle('open-palette-editor-window', async () => {
     if (typeof onOpenPaletteEditor !== 'function') {

@@ -28,7 +28,7 @@ function buildToolsSubmenu(menuAction) {
   }));
 }
 
-function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindow, openThemeSettingsWindow, openPaletteEditorWindow }) {
+function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindow, openThemeSettingsWindow, openPaletteEditorWindow, showRestoreBackupDialog }) {
   const template = [
     {
       label: 'File',
@@ -54,6 +54,8 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
           accelerator: 'CmdOrCtrl+Shift+S',
           click: async () => saveAndSend({ filters: FILE_FILTERS.animationSave, channel: 'save-animation' })
         },
+        { type: 'separator' },
+        { label: 'Restore Backup...', click: () => showRestoreBackupDialog() },
         { type: 'separator' },
         { label: 'Exit', accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q', click: () => app.quit() }
       ]

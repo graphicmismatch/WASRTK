@@ -1,6 +1,7 @@
 const path = require('path');
 const { BrowserWindow, dialog } = require('electron');
 const { isDev } = require('./constants');
+const { getAutosaveDir } = require('./autosave-store');
 
 function createWindowController({ getWindowOptions, loadFile }) {
   let mainWindow = null;
@@ -63,6 +64,26 @@ function createWindowController({ getWindowOptions, loadFile }) {
 
     if (!result.canceled) {
       sendToRenderer(channel, result.filePath);
+    }
+  }
+
+  // Manual backup restore: a plain file-open dialog defaulted to the
+  // autosaves folder, reusing the existing 'load-project' channel/listener
+  // -- a `.wasrtk` autosave is loaded exactly like any other project file.
+  async function showRestoreBackupDialog() {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Restore Backup',
+      defaultPath: getAutosaveDir(),
+      properties: ['openFile'],
+      filters: [{ name: 'WASRTK Backups', extensions: ['wasrtk'] }]
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      sendToRenderer('load-project', result.filePaths[0]);
     }
   }
 
@@ -181,7 +202,8 @@ function createWindowController({ getWindowOptions, loadFile }) {
     openThemeSettingsWindow,
     openPaletteEditorWindow,
     showOpenDialogAndSend,
-    showSaveDialogAndSend
+    showSaveDialogAndSend,
+    showRestoreBackupDialog
   };
 }
 

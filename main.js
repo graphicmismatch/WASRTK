@@ -1,9 +1,10 @@
 const path = require('path');
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const { getWindowOptions } = require('./src/main/constants');
 const { registerScreenCaptureHandlers, registerFileHandlers } = require('./src/main/ipc');
 const { createMenuTemplate } = require('./src/main/menu');
 const { createWindowController } = require('./src/main/window');
+const { checkForCrashRecovery, markCleanExit } = require('./src/main/autosave-store');
 
 const isSmoke = process.argv.includes('--smoke');
 
@@ -35,6 +36,11 @@ function setupSmokeHarness() {
     }
     settled = true;
     clearTimeout(failsafeTimer);
+    // app.exit() below skips the normal quit sequence ('before-quit' never
+    // fires), so mark this shutdown clean here instead -- otherwise the
+    // next real launch would see this run's autosave (if any fired) as a
+    // leftover crash and prompt to recover it.
+    markCleanExit();
     app.exit(exitCode);
   };
 
@@ -70,6 +76,37 @@ function setupSmokeHarness() {
   }
 }
 
+// An autosave newer than the last clean shutdown means the previous
+// session ended without one -- offers to reload it through the existing
+// 'load-project' channel/listener (a .wasrtk autosave loads exactly like
+// any other project file). Skipped under --smoke so a headless/CI run
+// never blocks on a native dialog waiting for a human.
+async function checkCrashRecoveryOnStartup() {
+  const recovery = checkForCrashRecovery();
+  if (!recovery) {
+    return;
+  }
+
+  const mainWindow = windowController.getMainWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Restore', 'Discard'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Recover unsaved work?',
+    message: 'WASRTK closed unexpectedly. An autosaved backup is available.',
+    detail: `Autosaved at ${new Date(recovery.mtimeMs).toLocaleString()}`
+  });
+
+  if (response === 0) {
+    mainWindow.webContents.send('load-project', recovery.path);
+  }
+}
+
 app.whenReady().then(() => {
   windowController.createWindow();
 
@@ -86,13 +123,18 @@ app.whenReady().then(() => {
     saveAndSend: windowController.showSaveDialogAndSend,
     getMainWindow: windowController.getMainWindow,
     openThemeSettingsWindow: windowController.openThemeSettingsWindow,
-    openPaletteEditorWindow: windowController.openPaletteEditorWindow
+    openPaletteEditorWindow: windowController.openPaletteEditorWindow,
+    showRestoreBackupDialog: windowController.showRestoreBackupDialog
   });
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
   if (isSmoke) {
     setupSmokeHarness();
+  } else {
+    windowController.getMainWindow().webContents.once('did-finish-load', () => {
+      checkCrashRecoveryOnStartup();
+    });
   }
 });
 
@@ -106,4 +148,8 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     windowController.createWindow();
   }
+});
+
+app.on('before-quit', () => {
+  markCleanExit();
 });

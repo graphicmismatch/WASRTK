@@ -1076,6 +1076,34 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
   });
 
+  // Probe 15: autosave probe (item 9). Confirms the whole renderer <-> IPC
+  // <-> disk path: a state-changing action marks the app dirty (via
+  // history.js's onHistoryChanged -> _isDirty, the same signal the
+  // interval timer gates on), performAutosave() writes a real .wasrtk
+  // backup reachable through the same 'list-autosaves' channel the
+  // Restore Backup menu item uses, and a successful write clears the
+  // dirty flag again. The crash-recovery decision logic itself
+  // (checkForCrashRecovery's mtime comparison) is covered by
+  // tests/unit/autosave-store.test.js instead, since it needs no live app.
+  await runAsyncProbe(probes, 'autosave', async () => {
+    app.saveState();
+    app.drawPoint(60, 60);
+    if (!app.getIsDirty()) {
+      throw new Error('drawing did not mark the app dirty -- onHistoryChanged -> _isDirty wiring broken');
+    }
+
+    const before = await ipcRenderer.invoke('list-autosaves');
+    await app.performAutosave();
+    const after = await ipcRenderer.invoke('list-autosaves');
+
+    if (after.length <= before.length) {
+      throw new Error(`performAutosave did not create a new backup file: before=${before.length}, after=${after.length}`);
+    }
+    if (app.getIsDirty()) {
+      throw new Error('performAutosave succeeded but left the dirty flag set');
+    }
+  });
+
   const ok = Object.values(probes).every((probe) => probe.pass) && errors.length === 0;
 
   return {

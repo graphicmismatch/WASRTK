@@ -80,7 +80,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 - [x] Add resizable floating panels (Tools, Colors, History). **Done** (scope note: layers/brush settings/navigator stayed in the fixed sidebar — see the architecture doc)
 - [x] Add robust history timeline with named snapshots and non-linear jump points. **Done**
 - [ ] Add macro/action recording for repeated drawing and editing workflows.
-- [ ] Add autosave, crash recovery, and backup version history controls.
+- [x] Add autosave, crash recovery, and backup version history controls. **Done** (scope note: File > Restore Backup... is a file-open dialog defaulted to the autosaves folder rather than a custom list UI — see the architecture doc)
 
 ### Phase 4 — File compatibility and output
 

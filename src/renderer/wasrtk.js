@@ -82,6 +82,10 @@ let hasTransparentBackground = false; // Track if project has transparent backgr
 let projectBackgroundColor = '#ffffff';
 
 // Canvas elements
+// ponytail: fixed cadence, no settings UI for it -- add one if users ever
+// ask for control over this.
+const AUTOSAVE_INTERVAL_MS = 120000;
+
 const mainCanvas = document.getElementById('mainCanvas');
 const overlayCanvas = document.getElementById('overlayCanvas');
 const mainCtx = mainCanvas.getContext('2d');
@@ -306,7 +310,10 @@ class WASRTK {
                 this.renderCurrentFrame();
                 this.updateUI();
             },
-            onHistoryChanged: () => this._historyPanel.updateHistoryPanel()
+            onHistoryChanged: () => {
+                this._historyPanel.updateHistoryPanel();
+                this._isDirty = true;
+            }
         });
         // Selection subsystem. The selection state stays in the module
         // globals (event handlers and frame/layer ops here read them
@@ -337,6 +344,8 @@ class WASRTK {
         this._shortcutOverrides = {};
         this._commandPalette = createCommandPalette(this);
         this._shortcutsPanel = createShortcutsPanel(this);
+        this._isDirty = false;
+        this.startAutosaveTimer();
         this.initializeCanvas();
         this.initializeFrames();
         this.initializeLayers();
@@ -1405,51 +1414,55 @@ class WASRTK {
         }
     }
 
+    // Shared by saveProject and performAutosave -- both need the identical
+    // payload, just written to a different place.
+    buildCurrentProjectData() {
+        return buildProjectData({
+            frames,
+            layers,
+            canvas: {
+                width: mainCanvas.width,
+                height: mainCanvas.height,
+                backgroundColor: hasTransparentBackground ? null : projectBackgroundColor,
+                transparentBackground: hasTransparentBackground,
+                author: 'WASRTK'
+            },
+            settings: {
+                fps,
+                onionSkinningEnabled,
+                onionSkinningRange,
+                referenceOpacity,
+                referenceVisible,
+                antialiasingEnabled,
+                currentTool,
+                currentColor,
+                currentOpacity,
+                brushSize,
+                brushShape,
+                brushPreset,
+                brushFlow,
+                brushSpacing,
+                pressureSensitivityEnabled,
+                pressureAffectsSize,
+                pressureAffectsFlow,
+                selectionMode,
+                selectionAntialias,
+                selectionFeather,
+                fillTolerance,
+                fillContiguous,
+                fillSampleAllLayers,
+                zoom
+            }
+        });
+    }
+
     async saveProject(filePath) {
         try {
             if (!frames || frames.length === 0) {
                 throw new Error('No frames to save. Please create at least one frame.');
             }
 
-            const projectData = buildProjectData({
-                frames,
-                layers,
-                canvas: {
-                    width: mainCanvas.width,
-                    height: mainCanvas.height,
-                    backgroundColor: hasTransparentBackground ? null : projectBackgroundColor,
-                    transparentBackground: hasTransparentBackground,
-                    author: 'WASRTK'
-                },
-                settings: {
-                    fps,
-                    onionSkinningEnabled,
-                    onionSkinningRange,
-                    referenceOpacity,
-                    referenceVisible,
-                    antialiasingEnabled,
-                    currentTool,
-                    currentColor,
-                    currentOpacity,
-                    brushSize,
-                    brushShape,
-                    brushPreset,
-                    brushFlow,
-                    brushSpacing,
-                    pressureSensitivityEnabled,
-                    pressureAffectsSize,
-                    pressureAffectsFlow,
-                    selectionMode,
-                    selectionAntialias,
-                    selectionFeather,
-                    fillTolerance,
-                    fillContiguous,
-                    fillSampleAllLayers,
-                    zoom
-                }
-            });
-
-            const jsonData = serializeProjectData(projectData);
+            const jsonData = serializeProjectData(this.buildCurrentProjectData());
 
             const result = await ipcRenderer.invoke('save-file', {
                 filePath,
@@ -1460,11 +1473,43 @@ class WASRTK {
                 throw new Error(result.error || 'Failed to save project file.');
             }
 
+            this._isDirty = false;
             console.log('Project saved successfully:', filePath);
         } catch (error) {
             console.error('Failed to save project:', error);
             alert(`Error saving project: ${error.message}`);
         }
+    }
+
+    // Fired on a timer (see startAutosaveTimer) and gated on _isDirty --
+    // set by every history push/undo/redo/jump (onHistoryChanged in the
+    // constructor) and cleared here and by an explicit saveProject, so an
+    // autosave never fires with nothing new to capture.
+    async performAutosave() {
+        if (!frames || frames.length === 0) {
+            return;
+        }
+        try {
+            const jsonData = serializeProjectData(this.buildCurrentProjectData());
+            const result = await ipcRenderer.invoke('save-autosave', jsonData);
+            if (result.success) {
+                this._isDirty = false;
+            }
+        } catch (error) {
+            console.error('Autosave failed:', error);
+        }
+    }
+
+    getIsDirty() {
+        return this._isDirty;
+    }
+
+    startAutosaveTimer() {
+        setInterval(() => {
+            if (this._isDirty) {
+                this.performAutosave();
+            }
+        }, AUTOSAVE_INTERVAL_MS);
     }
 
     async saveAsPngSequence(filePath) {
@@ -1717,6 +1762,7 @@ class WASRTK {
             document.getElementById('opacityValue').textContent = Math.round(currentOpacity * 100) + '%';
 
             this.selectTool(currentTool);
+            this._isDirty = false;
             console.log('Project loaded successfully:', filePath);
         } catch (error) {
             console.error('Failed to load project:', error);

@@ -102,6 +102,21 @@ Read and mutate the shared `shortcuts.json` file: a flat `{ [actionId]: comboStr
 
 Theme, palette, layout, and shortcuts channels are all registered through the same `registerConfigChannels(...)` helper in `src/main/ipc.js`, backed by the shared `createJsonConfigStore(...)` factory in `src/main/json-config-store.js` (directory creation, corrupt-JSON recovery, and load/save sanitization are implemented once and reused by every store).
 
+### Autosave channels
+
+- `save-autosave`
+  - Direction: renderer -> main
+  - Payload: serialized project JSON (same format `save-file`/`save-project` use)
+  - Returns `{ success, path }` (the `handleWithEnvelope` envelope)
+
+  Writes a new timestamped `.wasrtk` backup under the `autosaves/` folder in the Electron user data directory and prunes down to the configured max (`src/main/autosave-store.js`). Called by `wasrtk.js`'s `performAutosave()`, itself gated on a dirty flag and fired on a fixed interval (`startAutosaveTimer()`).
+
+- `list-autosaves`
+  - Direction: renderer -> main
+  - Returns an array of `{ name, path, mtimeMs }`, newest first.
+
+  There is no dedicated channel for the crash-recovery check itself (`checkForCrashRecovery()`) or for marking a clean exit (`markCleanExit()`) -- both run entirely in the main process (`main.js`, around `app.whenReady()`/`before-quit`), since the decision to show the native recovery dialog has to happen before the renderer necessarily exists yet. Accepting the recovery prompt sends the recovered file's path down the existing `load-project` channel below, unchanged.
+
 ## One-way channels sent to the renderer
 
 Defined by `windowController.sendToRenderer(...)` in `src/main/window.js` and consumed in `setupIPCListeners()` inside `src/renderer/wasrtk.js`.
@@ -110,7 +125,7 @@ Defined by `windowController.sendToRenderer(...)` in `src/main/window.js` and co
 
 - `new-project`
 - `open-reference-image`
-- `load-project`
+- `load-project` -- also sent (with an autosave's path) when the user accepts the crash-recovery prompt or picks a file via File > Restore Backup..., not just from the Load Project menu item
 - `save-project`
 - `save-animation`
 
