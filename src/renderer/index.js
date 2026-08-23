@@ -1,7 +1,9 @@
 const { ipcRenderer } = require('electron');
 const { WASRTK } = require('./wasrtk');
 const { initializeThemeSync } = require('./theme');
-const { makeFloatingPanelDraggable } = require('./floating-panel');
+const { makeFloatingPanelDraggable, makeFloatingPanelResizable } = require('./floating-panel');
+
+const FLOATING_PANEL_IDS = ['toolsPanel', 'colorPanel', 'historyPanel'];
 
 function bootstrap() {
   // process.argv in the renderer reflects Chromium's own subprocess command
@@ -26,24 +28,42 @@ function bootstrap() {
     await initializeThemeSync();
 
     const { layout } = await ipcRenderer.invoke('load-layout-config');
-    makeFloatingPanelDraggable(
-      document.getElementById('colorPanel'),
-      document.getElementById('colorPanelHandle'),
-      document.querySelector('.main-content'),
-      {
-        initialPosition: layout.colorPanel || undefined,
-        onPositionChange: (position) => ipcRenderer.invoke('save-layout-config', { colorPanel: position })
-      }
-    );
-    makeFloatingPanelDraggable(
-      document.getElementById('historyPanel'),
-      document.getElementById('historyPanelHandle'),
-      document.querySelector('.main-content'),
-      {
-        initialPosition: layout.historyPanel || undefined,
-        onPositionChange: (position) => ipcRenderer.invoke('save-layout-config', { historyPanel: position })
-      }
-    );
+    const bounds = document.querySelector('.main-content');
+
+    FLOATING_PANEL_IDS.forEach((id) => {
+      const panelEl = document.getElementById(id);
+      const handleEl = document.getElementById(`${id}Handle`);
+      if (!panelEl || !handleEl) return;
+
+      // layout-config.js's save replaces a panel's whole entry (not a
+      // deep-merge of its own fields), so position and size are tracked
+      // together here and the full combined state is sent regardless of
+      // which one just changed -- otherwise a resize would drop the
+      // saved position, or a drag would drop the saved size.
+      const state = { ...(layout.panels[id] || {}) };
+      const persist = () => ipcRenderer.invoke('save-layout-config', { panels: { [id]: state } });
+
+      makeFloatingPanelDraggable(panelEl, handleEl, bounds, {
+        initialPosition: state.top !== undefined && state.left !== undefined
+          ? { top: state.top, left: state.left }
+          : undefined,
+        onPositionChange: (position) => {
+          state.top = position.top;
+          state.left = position.left;
+          persist();
+        }
+      });
+
+      makeFloatingPanelResizable(panelEl, {
+        initialSize: state.width && state.height ? { width: state.width, height: state.height } : undefined,
+        onSizeChange: (size) => {
+          state.width = size.width;
+          state.height = size.height;
+          persist();
+        }
+      });
+    });
+
     app.updateHistoryPanel();
 
     if (isSmoke) {

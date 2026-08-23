@@ -44,4 +44,34 @@ function makeFloatingPanelDraggable(panelEl, handleEl, boundsEl, { initialPositi
     setPosition(initialPosition ? initialPosition.left : panelEl.offsetLeft, initialPosition ? initialPosition.top : panelEl.offsetTop);
 }
 
-module.exports = { makeFloatingPanelDraggable };
+// Restores a panel's persisted size (if any) and reports future
+// user-driven resizes. The actual resize handle is native CSS
+// (`resize: both` on `resizeEl`, normally the panel element itself --
+// see .floating-panel in styles.css); there's no resize *event* for an
+// element the way there is for the window, so a ResizeObserver is the
+// only way to detect it.
+function makeFloatingPanelResizable(resizeEl, { initialSize, onSizeChange } = {}) {
+    if (initialSize && initialSize.width) resizeEl.style.width = `${initialSize.width}px`;
+    if (initialSize && initialSize.height) resizeEl.style.height = `${initialSize.height}px`;
+
+    if (typeof ResizeObserver === 'undefined' || !onSizeChange) return;
+
+    // The observer fires once immediately on observe() with the current
+    // size -- skip that first callback so restoring initialSize above
+    // doesn't immediately re-report the same value right back as if the
+    // user had just resized it.
+    let isFirstCallback = true;
+    const observer = new ResizeObserver((entries) => {
+        if (isFirstCallback) {
+            isFirstCallback = false;
+            return;
+        }
+        const entry = entries[0];
+        if (!entry) return;
+        const { width, height } = entry.contentRect;
+        onSizeChange({ width: Math.round(width), height: Math.round(height) });
+    });
+    observer.observe(resizeEl);
+}
+
+module.exports = { makeFloatingPanelDraggable, makeFloatingPanelResizable };

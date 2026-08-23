@@ -35,68 +35,8 @@
 
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Left Panel - Tools -->
+            <!-- Left Panel - Brush/Layers -->
             <div class="left-panel">
-                <div class="panel-section">
-                    <h3>Tools</h3>
-                    <div class="tool-grid">
-                        <button class="tool-btn active" data-tool="pen" title="Pen Tool (1)">
-                            <i class="fas fa-pen"></i>
-                        </button>
-                        <button class="tool-btn" data-tool="line" title="Line Tool (2)">
-                            <i class="fas fa-minus"></i>
-                        </button>
-                        <button class="tool-btn" data-tool="rectangle" title="Rectangle Tool (3)">
-                            <i class="fas fa-square"></i>
-                        </button>
-                        <button class="tool-btn" data-tool="circle" title="Circle Tool (4)">
-                            <i class="fas fa-circle"></i>
-                        </button>
-                        <button class="tool-btn" data-tool="fill" title="Fill Tool (5)">
-                            <i class="fas fa-fill-drip"></i>
-                        </button>
-                        <button class="tool-btn" data-tool="eraser" title="Eraser Tool (6)">
-                            <i class="fas fa-eraser"></i>
-                        </button>
-                        <button class="tool-btn" data-tool="selection" title="Selection Tool (7)">
-                            <i class="fas fa-vector-square"></i>
-                        </button>
-                        <button class="tool-btn" data-tool="eyedropper" title="Eyedropper Tool (8)">
-                            <i class="fas fa-eye-dropper"></i>
-                        </button>
-                    </div>
-                    <div id="fillToleranceSection" class="panel-section fill-controls" style="display: none;">
-                        <label for="fillToleranceSlider">Tolerance:</label>
-                        <input type="range" id="fillToleranceSlider" min="0" max="255" value="0" class="slider">
-                        <span id="fillToleranceValue">0</span>
-                        <label class="fill-option fill-only-option">
-                            <input type="checkbox" id="fillContiguous" checked>
-                            Contiguous Fill
-                        </label>
-                        <label class="fill-option fill-only-option">
-                            <input type="checkbox" id="fillSampleAllLayers">
-                            Sample All Layers
-                        </label>
-                    </div>
-                    <div id="selectionModeSection" class="panel-section" style="display: none;">
-                        <label for="selectionModeSelect">Selection Mode:</label>
-                        <select id="selectionModeSelect">
-                            <option value="rectangle" selected>Rectangle</option>
-                            <option value="magic-wand">Magic Wand</option>
-                            <option value="lasso">Lasso</option>
-                            <option value="polygon">Polygon</option>
-                        </select>
-                        <label class="selection-option">
-                            <input type="checkbox" id="selectionAntialias" checked>
-                            Lasso/Polygon Anti-alias
-                        </label>
-                        <label for="selectionFeatherSlider">Feather:</label>
-                        <input type="range" id="selectionFeatherSlider" min="0" max="10" value="0" class="slider">
-                        <span id="selectionFeatherValue">0px</span>
-                        <div id="selectionHint" class="selection-hint">Drag to create a rectangular selection. Drag inside a selection to move it; Enter commits, Escape cancels.</div>
-                    </div>
-                </div>
-
                 <div class="panel-section">
                     <h3>Brush Size</h3>
                     <div class="brush-preview">
@@ -337,8 +277,74 @@
                 </div>
             </div>
 
+            <!-- Floating Tools Panel -->
+            <div id="toolsPanel" class="floating-panel" style="top: 76px; left: 20px; width: 240px;">
+                <div id="toolsPanelHandle" class="floating-panel-header">
+                    <i class="fas fa-toolbox"></i>
+                    <span>Tools</span>
+                </div>
+                <div class="floating-panel-body">
+                    <div class="tool-grid">
+                        <button class="tool-btn active" data-tool="pen" title="Pen Tool (1)">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="line" title="Line Tool (2)">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="rectangle" title="Rectangle Tool (3)">
+                            <i class="fas fa-square"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="circle" title="Circle Tool (4)">
+                            <i class="fas fa-circle"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="fill" title="Fill Tool (5)">
+                            <i class="fas fa-fill-drip"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="eraser" title="Eraser Tool (6)">
+                            <i class="fas fa-eraser"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="selection" title="Selection Tool (7)">
+                            <i class="fas fa-vector-square"></i>
+                        </button>
+                        <button class="tool-btn" data-tool="eyedropper" title="Eyedropper Tool (8)">
+                            <i class="fas fa-eye-dropper"></i>
+                        </button>
+                    </div>
+                    <div id="fillToleranceSection" class="panel-section fill-controls" style="display: none;">
+                        <label for="fillToleranceSlider">Tolerance:</label>
+                        <input type="range" id="fillToleranceSlider" min="0" max="255" value="0" class="slider">
+                        <span id="fillToleranceValue">0</span>
+                        <label class="fill-option fill-only-option">
+                            <input type="checkbox" id="fillContiguous" checked>
+                            Contiguous Fill
+                        </label>
+                        <label class="fill-option fill-only-option">
+                            <input type="checkbox" id="fillSampleAllLayers">
+                            Sample All Layers
+                        </label>
+                    </div>
+                    <div id="selectionModeSection" class="panel-section" style="display: none;">
+                        <label for="selectionModeSelect">Selection Mode:</label>
+                        <select id="selectionModeSelect">
+                            <option value="rectangle" selected>Rectangle</option>
+                            <option value="magic-wand">Magic Wand</option>
+                            <option value="lasso">Lasso</option>
+                            <option value="polygon">Polygon</option>
+                        </select>
+                        <label class="selection-option">
+                            <input type="checkbox" id="selectionAntialias" checked>
+                            Lasso/Polygon Anti-alias
+                        </label>
+                        <label for="selectionFeatherSlider">Feather:</label>
+                        <input type="range" id="selectionFeatherSlider" min="0" max="10" value="0" class="slider">
+                        <span id="selectionFeatherValue">0px</span>
+                        <div id="selectionHint" class="selection-hint">Drag to create a rectangular selection. Drag inside a selection to move it; Enter commits, Escape cancels.</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Floating Colors Panel -->
-            <div id="colorPanel" class="floating-panel" style="top: 76px; left: 300px;">
+            <div id="colorPanel" class="floating-panel" style="top: 76px; left: 300px; width: 240px;">
                 <div id="colorPanelHandle" class="floating-panel-header">
                     <i class="fas fa-palette"></i>
                     <span>Colors</span>
@@ -364,7 +370,7 @@
             </div>
 
             <!-- Floating History Panel -->
-            <div id="historyPanel" class="floating-panel" style="top: 76px; left: 620px;">
+            <div id="historyPanel" class="floating-panel" style="top: 76px; left: 620px; width: 240px;">
                 <div id="historyPanelHandle" class="floating-panel-header">
                     <i class="fas fa-history"></i>
                     <span>History</span>

@@ -77,7 +77,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 ### Phase 3 — Productivity and pro workflow
 
 - [ ] Add customizable keyboard shortcuts and command palette search.
-- [ ] Add dockable/resizable panels (layers, colors, history, navigator, brush settings).
+- [x] Add resizable floating panels (Tools, Colors, History). **Done** (scope note: layers/brush settings/navigator stayed in the fixed sidebar — see the architecture doc)
 - [x] Add robust history timeline with named snapshots and non-linear jump points. **Done**
 - [ ] Add macro/action recording for repeated drawing and editing workflows.
 - [ ] Add autosave, crash recovery, and backup version history controls.

@@ -49,6 +49,7 @@ Registers `ipcMain.handle(...)` endpoints for:
 - Text file reads, binary file reads, file saves
 - Theme config load/save/reset/path lookup
 - Palette config load/save/path lookup, plus opening the palette editor window
+- Layout config load/save (floating panel positions/sizes)
 
 Built on three shared helpers: `handleWithEnvelope` (try/catch ->
 `{ success, error }` envelope), `registerConfigChannels` (the theme/palette
@@ -69,6 +70,19 @@ Thin wrappers around `json-config-store` that add their own sanitize
 functions and keep their original exported names (so `ipc.js` did not need
 to change on extraction). Theme config is `theme.json`; palette config is
 `palettes.json`. Both live in `app.getPath('userData')`.
+
+### `src/main/layout-config.js`
+
+Another `json-config-store` wrapper, `layout.json`: a generalized
+`{ panels: { [panelId]: {top, left, width, height} } }` map, one entry
+per floating panel, each field independently optional (a panel that's
+only been dragged has no `width`/`height` yet, and vice versa).
+`saveLayoutConfig` **merges** the incoming partial update onto the
+currently-stored panels (`mergePanelsUpdate`, exported separately so
+this pure merge behavior is unit-testable without a real store) rather
+than replacing the file wholesale -- each panel saves its own state
+independently (see `floating-panel.js`), so a plain replace-on-save
+would silently wipe out every *other* panel's saved state on each call.
 
 ### `src/main/constants.js`
 
@@ -122,13 +136,27 @@ reach them only through the returned methods.
 
 `createHistoryPanel(env)` — `updateHistoryPanel()`, the DOM renderer for
 the floating History panel (`#historyPanel`/`#historyList` in
-`index.html`, registered as a draggable `floating-panel.js` panel in
-`index.js`, position persisted via `historyPanel` in `layout-config.js`
-alongside the color panel's `colorPanel` key). Click jumps to that
+`index.html`, registered as a draggable+resizable `floating-panel.js`
+panel in `index.js`, position/size persisted under the `historyPanel`
+key in `layout-config.js`'s generalized panel map). Click jumps to that
 position (`env.jumpTo`); double-click prompts to rename it
 (`env.nameSnapshot`). Fires on every `history.js` mutation via
 `onHistoryChanged`, not just `onAfterRestore` -- a plain `saveState()`
 push needs the panel to redraw too, not just undo/redo.
+
+### `src/renderer/floating-panel.js`
+
+Two independent helpers for the app's floating panels (`#toolsPanel`,
+`#colorPanel`, `#historyPanel` -- `index.js` wires all three the same
+way): `makeFloatingPanelDraggable` (drag via a `.floating-panel-header`
+handle, clamped to stay inside a bounds element) and
+`makeFloatingPanelResizable` (restores a persisted `{width, height}` and
+reports future resizes via `ResizeObserver`, since there's no resize
+*event* for an element the way there is for the window -- the resize
+handle itself is native CSS `resize: both` on `.floating-panel`, no
+hand-rolled drag math needed there). Both are position/size-agnostic
+about *where* that data is persisted; `index.js` is what wires their
+callbacks to `layout-config.js`.
 
 ### `src/renderer/selection-manager.js`
 

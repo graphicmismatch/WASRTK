@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { ipcRenderer } = require('electron');
 
 // Renderer-side self-check for `npm run smoke` (electron . --smoke).
 //
@@ -334,6 +335,59 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
       if (fs.existsSync(tmpPath)) {
         fs.unlinkSync(tmpPath);
       }
+    }
+  });
+
+  // Probe: floatingPanels probe. Checks the Tools section survived being
+  // moved from the fixed sidebar into a floating panel (item 7) -- the
+  // tool buttons still exist and work inside it -- and regression-guards
+  // layout-config.js's merge-on-save fix: saving one panel's position/size
+  // must not wipe out a DIFFERENT panel's already-saved state, which a
+  // plain replace-on-save silently did before that fix (nothing caught it
+  // until a second panel, historyPanel, existed to notice on).
+  await runAsyncProbe(probes, 'floatingPanels', async () => {
+    const toolsPanel = document.getElementById('toolsPanel');
+    const toolsPanelHandle = document.getElementById('toolsPanelHandle');
+    const colorPanel = document.getElementById('colorPanel');
+    if (!toolsPanel || !toolsPanelHandle || !colorPanel) {
+      throw new Error('toolsPanel, toolsPanelHandle, or colorPanel element not found');
+    }
+    if (!toolsPanel.classList.contains('floating-panel')) {
+      throw new Error('expected #toolsPanel to be a .floating-panel');
+    }
+    const lineToolBtn = toolsPanel.querySelector('.tool-btn[data-tool="line"]');
+    if (!lineToolBtn) {
+      throw new Error('expected .tool-btn[data-tool="line"] inside the floating Tools panel');
+    }
+    app.selectTool('line');
+    if (app.getCurrentToolConfig()?.id !== 'line') {
+      throw new Error('selectTool did not work with the tool buttons relocated into the floating panel');
+    }
+    app.selectTool('pen'); // restore the default for later probes
+
+    const { layout: before } = await ipcRenderer.invoke('load-layout-config');
+    const previousColorPanel = before.panels.colorPanel;
+    const previousToolsPanel = before.panels.toolsPanel;
+
+    try {
+      await ipcRenderer.invoke('save-layout-config', { panels: { colorPanel: { top: 111, left: 222, width: 240, height: 300 } } });
+      await ipcRenderer.invoke('save-layout-config', { panels: { toolsPanel: { top: 333, left: 444, width: 240, height: 300 } } });
+
+      const { layout: after } = await ipcRenderer.invoke('load-layout-config');
+      if (!after.panels.colorPanel || after.panels.colorPanel.top !== 111 || after.panels.colorPanel.left !== 222) {
+        throw new Error(`floatingPanels: expected colorPanel's saved position to survive the later toolsPanel save, got ${JSON.stringify(after.panels.colorPanel)}`);
+      }
+      if (!after.panels.toolsPanel || after.panels.toolsPanel.top !== 333) {
+        throw new Error(`floatingPanels: expected toolsPanel's own save to have taken effect, got ${JSON.stringify(after.panels.toolsPanel)}`);
+      }
+    } finally {
+      // Restore whatever was there before this probe touched it.
+      await ipcRenderer.invoke('save-layout-config', {
+        panels: {
+          colorPanel: previousColorPanel || { top: 76, left: 300 },
+          toolsPanel: previousToolsPanel || { top: 76, left: 20 }
+        }
+      });
     }
   });
 
