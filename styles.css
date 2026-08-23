@@ -855,6 +855,24 @@ body {
     cursor: pointer;
 }
 
+.layer-item-group {
+    background-color: var(--bg-med);
+}
+
+.layer-item-group .layer-info {
+    gap: 6px;
+}
+
+.layer-group-collapse-toggle {
+    cursor: pointer;
+    width: 12px;
+    text-align: center;
+}
+
+.layer-item-member {
+    margin-left: 18px;
+}
+
 .layer-name {
     font-size: 14px;
 }

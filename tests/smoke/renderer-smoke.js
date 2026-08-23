@@ -525,6 +525,118 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
   });
 
+  // Probe: groups probe. End-to-end regression guard for the layer-group
+  // model (layer-groups.js), covering what the pure unit tests can't --
+  // real DOM rendering and real canvas compositing. Wraps a painted layer
+  // in a new group, then walks through visibility cascading, lock
+  // cascading, collapse, moving the whole group as a block, and deleting
+  // the whole block, checking the real DOM/canvas at each step.
+  runProbe(probes, 'groups', () => {
+    const layerList = document.getElementById('layerList');
+    const mainCanvas = document.getElementById('mainCanvas');
+    if (!layerList || !mainCanvas) {
+      throw new Error('layerList or mainCanvas element not found');
+    }
+    const initialCount = layerList.querySelectorAll('.layer-item').length;
+    const testPixel = { x: 230, y: 100 };
+
+    // bg(0) -> add L1(1) -> paint red on L1 -> group it: [bg(0), L1(1, member), header(2)]
+    app.addLayer();
+    app.selectLayer(1);
+    const l1Context = app.getActiveLayerContext();
+    if (!l1Context) throw new Error('no active layer context for the new layer in groups probe');
+    l1Context.ctx.globalAlpha = 1;
+    l1Context.ctx.globalCompositeOperation = 'source-over';
+    l1Context.ctx.fillStyle = '#ff0000';
+    l1Context.ctx.fillRect(testPixel.x, testPixel.y, 1, 1);
+
+    app.newGroup();
+    const headerRow = layerList.querySelector('.layer-item[data-layer="2"]');
+    const memberRow = layerList.querySelector('.layer-item[data-layer="1"]');
+    if (!headerRow || !headerRow.classList.contains('layer-item-group') || !headerRow.classList.contains('active')) {
+      throw new Error('newGroup: expected the header at index 2 to be an active .layer-item-group row');
+    }
+    if (!memberRow || !memberRow.classList.contains('layer-item-member')) {
+      throw new Error('newGroup: expected the wrapped layer at index 1 to be a .layer-item-member row');
+    }
+
+    const isRedAt = (px) => {
+      const p = readPixel(mainCanvas, px.x, px.y);
+      return p[0] > 200 && p[1] < 100 && p[2] < 100;
+    };
+    const isWhiteAt = (px) => {
+      const p = readPixel(mainCanvas, px.x, px.y);
+      return p[0] > 200 && p[1] > 200 && p[2] > 200;
+    };
+
+    if (!isRedAt(testPixel)) {
+      throw new Error('groups: expected the member\'s red pixel to render while the group is visible');
+    }
+
+    // Visibility cascades: hiding the group must hide its member too, even
+    // though the member's own `visible` flag never changed.
+    app.toggleLayerVisibility(2);
+    if (!isWhiteAt(testPixel)) {
+      throw new Error('groups: expected the member to be hidden while its group is hidden');
+    }
+    app.toggleLayerVisibility(2);
+    if (!isRedAt(testPixel)) {
+      throw new Error('groups: expected the member to render again once its group is visible again');
+    }
+
+    // Lock cascades: locking the group must block getActiveLayerContext
+    // for its member, even though the member's own `locked` flag never
+    // changed.
+    app.setLayerGroupLocked(2, true);
+    app.selectLayer(1);
+    if (app.getActiveLayerContext()) {
+      throw new Error('groups: expected getActiveLayerContext to be blocked while the member\'s group is locked');
+    }
+    app.setLayerGroupLocked(2, false);
+    if (!app.getActiveLayerContext()) {
+      throw new Error('groups: expected getActiveLayerContext to work again once the group is unlocked');
+    }
+
+    // Collapse hides the member row from the panel only -- content still
+    // renders (checked via isRedAt above, unaffected by collapse).
+    app.selectLayer(2);
+    app.toggleGroupCollapsed(2);
+    if (layerList.querySelector('.layer-item[data-layer="1"]')) {
+      throw new Error('groups: expected the member row to be hidden from the panel while its group is collapsed');
+    }
+    if (!layerList.querySelector('.layer-item[data-layer="2"]')) {
+      throw new Error('groups: expected the header row to stay visible while collapsed');
+    }
+    app.toggleGroupCollapsed(2);
+    if (!layerList.querySelector('.layer-item[data-layer="1"]')) {
+      throw new Error('groups: expected the member row to reappear once expanded again');
+    }
+
+    // Moving the header moves the whole block (header + member) as a
+    // unit, keeping them adjacent -- here past bg, which lands the group
+    // at indices [0,1] and bg at index 2.
+    app.moveLayerDown();
+    const movedMember = layerList.querySelector('.layer-item[data-layer="0"]');
+    const movedHeader = layerList.querySelector('.layer-item[data-layer="1"]');
+    const movedBg = layerList.querySelector('.layer-item[data-layer="2"]');
+    if (!movedMember || !movedMember.classList.contains('layer-item-member')) {
+      throw new Error('groups: expected the member to have moved to index 0 along with its group');
+    }
+    if (!movedHeader || !movedHeader.classList.contains('layer-item-group') || !movedHeader.classList.contains('active')) {
+      throw new Error('groups: expected the header to have moved to index 1 and stay selected');
+    }
+    if (!movedBg || movedBg.classList.contains('layer-item-group') || movedBg.classList.contains('layer-item-member')) {
+      throw new Error('groups: expected bg to have moved to index 2, as a plain (non-group) layer');
+    }
+
+    // Deleting the header removes the whole block; only bg remains.
+    app.deleteLayer();
+    const afterDelete = layerList.querySelectorAll('.layer-item');
+    if (afterDelete.length !== initialCount) {
+      throw new Error(`groups: expected ${initialCount} layer-items after deleting the group, got ${afterDelete.length}`);
+    }
+  });
+
   // Probe 11: zoom probe. Regression guard for the upcoming zoom.js
   // extraction. Drives only the public zoom methods and reads back through
   // #zoomInput (the DOM updateZoom() writes to) -- the zoom variable is

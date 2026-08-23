@@ -17,6 +17,16 @@ function validateProjectData(projectData) {
   }
 }
 
+// Shared by both layer lists below (frame.layers and the top-level
+// metadata layers) -- group-only fields (collapsed, memberCount) are only
+// included for group entries, keeping plain-layer JSON unchanged from
+// before groups existed.
+function serializeLayerGroupFields(layer) {
+  const type = layer.type === 'group' ? 'group' : 'layer';
+  if (type !== 'group') return { type };
+  return { type, collapsed: layer.collapsed || false, memberCount: layer.memberCount || 0 };
+}
+
 function buildProjectData({
   frames,
   layers,
@@ -40,6 +50,7 @@ function buildProjectData({
       layers: frame.layers.map((layer) => ({
         id: layer.id,
         name: layer.name,
+        ...serializeLayerGroupFields(layer),
         visible: layer.visible,
         locked: layer.locked,
         opacity: layer.opacity ?? 1,
@@ -52,6 +63,7 @@ function buildProjectData({
     layers: layers.map((layer) => ({
       id: layer.id,
       name: layer.name,
+      ...serializeLayerGroupFields(layer),
       visible: layer.visible,
       locked: layer.locked,
       opacity: layer.opacity ?? 1,
@@ -111,12 +123,16 @@ async function buildFramesFromProject({
       frame.layers.push({
         id: layerData.id,
         name: layerData.name,
+        type: layerData.type === 'group' ? 'group' : 'layer',
         visible: layerData.visible,
         locked: layerData.locked,
         opacity: clampNumber(layerData.opacity, 1, 0, 1),
         blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over',
         alphaLocked: layerData.alphaLocked || false,
         clipToBelow: layerData.clipToBelow || false,
+        ...(layerData.type === 'group'
+          ? { collapsed: layerData.collapsed || false, memberCount: Math.max(0, Math.round(Number(layerData.memberCount) || 0)) }
+          : {}),
         canvas
       });
     }

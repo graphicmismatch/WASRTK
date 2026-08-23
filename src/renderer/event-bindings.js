@@ -325,6 +325,7 @@ function bindZoomEvents(app, env) {
 function bindLayerEvents(app) {
     // Layer controls
     document.getElementById('addLayerBtn').addEventListener('click', () => app.addLayer());
+    document.getElementById('newGroupBtn').addEventListener('click', () => app.newGroup());
     document.getElementById('deleteLayerBtn').addEventListener('click', () => app.deleteLayer());
     document.getElementById('moveLayerUpBtn').addEventListener('click', () => app.moveLayerUp());
     document.getElementById('moveLayerDownBtn').addEventListener('click', () => app.moveLayerDown());

@@ -26,11 +26,12 @@
 //   mainCanvas, mainCtx                -- canvas elements/context
 //   createLayerCanvas                  -- shared layer-canvas factory
 //   drawVisibleLayersToContext         -- from exporters.js, used only for
-//                                          the clipToBelow accumulation path
+//                                          the clipToBelow/group accumulation path
 //   applyImageSmoothing(ctx)
 //   clearSelection()
 //   saveStructureState()
 //   updateStatusBar()
+const { computeGroupMembership, getEffectiveVisibility } = require('./layer-groups');
 function createFrameManager(env) {
     function addFrame() {
         if (env.getActiveSelection()) env.clearSelection();
@@ -214,15 +215,16 @@ function createFrameManager(env) {
         if (frames.length === 0) return;
         const frame = frames[env.getCurrentFrame()];
 
-        if (frame.layers.some(layer => layer.clipToBelow)) {
-            // A clipped layer needs to mask against everything composited
-            // below it via destination-in, which drawVisibleLayersToContext
-            // does by accumulating progressively into targetCtx -- so route
-            // through a scratch canvas here instead of mainCtx directly.
-            // Gated behind the clipToBelow check (rather than always
+        if (frame.layers.some(layer => layer.clipToBelow || layer.type === 'group')) {
+            // Clipping needs to mask against everything composited below it
+            // via destination-in, and a group needs effective-visibility
+            // cascading for its members -- drawVisibleLayersToContext
+            // handles both, but only by accumulating progressively into
+            // targetCtx, so route through a scratch canvas here instead of
+            // mainCtx directly. Gated behind this check (rather than always
             // routing through this path) because this function runs on
-            // every mouse-move while drawing, and most frames have no
-            // clipped layers -- skip the extra canvas alloc + blit then.
+            // every mouse-move while drawing, and most frames have neither
+            // clipping nor groups -- skip the extra canvas alloc + blit then.
             const { canvas: compositeCanvas, ctx: compositeCtx } = env.createLayerCanvas({
                 width: env.mainCanvas.width,
                 height: env.mainCanvas.height,
@@ -270,14 +272,18 @@ function createFrameManager(env) {
     // this function's direct per-layer setTransform+drawImage loop doesn't
     // have, and thumbnails are a small non-authoritative preview -- not
     // worth the extra canvas + blit per frame on every timeline rebuild.
+    // Group visibility IS honored (cheap: just filters which layers draw,
+    // no accumulation needed) -- a hidden group should look hidden
+    // everywhere, not just on the main canvas.
     function drawFramePreview(previewCanvas, frame) {
         const previewCtx = previewCanvas.getContext('2d');
         previewCtx.fillStyle = '#222';
         previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
         const scaleX = previewCanvas.width / env.mainCanvas.width;
         const scaleY = previewCanvas.height / env.mainCanvas.height;
-        frame.layers.forEach(layer => {
-            if (layer.visible) {
+        const membership = computeGroupMembership(frame.layers);
+        frame.layers.forEach((layer, index) => {
+            if (getEffectiveVisibility(frame.layers, membership, index)) {
                 const opacity = layer.opacity ?? 1;
                 previewCtx.save();
                 previewCtx.globalAlpha = layer.locked ? opacity * 0.5 : opacity;
@@ -335,8 +341,9 @@ function createFrameManager(env) {
         // ignoring blend mode and clipping -- it's a preview aid, not real
         // compositing.
         const layers = Array.isArray(frame?.layers) ? frame.layers : [];
-        layers.forEach((layer) => {
-            if (layer.visible) {
+        const membership = computeGroupMembership(layers);
+        layers.forEach((layer, index) => {
+            if (getEffectiveVisibility(layers, membership, index)) {
                 env.mainCtx.globalAlpha = alpha * (layer.opacity ?? 1);
                 env.mainCtx.drawImage(layer.canvas, 0, 0);
             }

@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const ffmpeg = require('fluent-ffmpeg');
+const { computeGroupMembership, getEffectiveVisibility, getEffectiveLocked } = require('./layer-groups');
 
 // ffmpeg-static's binary can't execute from inside an asar archive;
 // electron-builder unpacks it to a sibling ".unpacked" directory in packaged
@@ -31,11 +32,18 @@ function getMimeType(fileExtension) {
 // `dimLocked` is an editor-only affordance (the 0.5 alpha shown for a locked
 // layer on the live canvas) and must stay false for exports/samples, which
 // need the true composited result, not an edit-lock indicator.
+//
+// Group entries (layer-groups.js) are ordinary array members here -- a
+// group's own canvas is blank, so drawing it is a harmless no-op. What
+// *does* need group awareness is visibility/lock: a member layer is only
+// effectively visible if it and its group both are (getEffectiveVisibility),
+// and effectively locked -- for dimLocked purposes -- if either is.
 function drawVisibleLayersToContext(targetCtx, frame, { createCanvas, dimLocked = false } = {}) {
   const layers = Array.isArray(frame?.layers) ? frame.layers : [];
+  const membership = computeGroupMembership(layers);
 
-  layers.forEach((layer) => {
-    if (!layer.visible) return;
+  layers.forEach((layer, index) => {
+    if (!getEffectiveVisibility(layers, membership, index)) return;
 
     let sourceCanvas = layer.canvas;
     if (layer.clipToBelow) {
@@ -48,7 +56,7 @@ function drawVisibleLayersToContext(targetCtx, frame, { createCanvas, dimLocked 
     }
 
     const opacity = layer.opacity ?? 1;
-    targetCtx.globalAlpha = dimLocked && layer.locked ? opacity * 0.5 : opacity;
+    targetCtx.globalAlpha = dimLocked && getEffectiveLocked(layers, membership, index) ? opacity * 0.5 : opacity;
     targetCtx.globalCompositeOperation = layer.blendMode || 'source-over';
     targetCtx.drawImage(sourceCanvas, 0, 0);
   });

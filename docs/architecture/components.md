@@ -214,14 +214,35 @@ and a captured reference would go stale across that.
 
 ### `src/renderer/layer-manager.js`
 
-`createLayerManager(env)` — layer CRUD (`addLayer`, `deleteLayer`,
-`moveLayerUp`/`moveLayerDown`, `flattenLayer`), `selectLayer`,
-`toggleLayerVisibility`, and `updateLayerList` (the layer list's DOM,
-including the visibility-toggle and select click handlers).
-`layers`/`currentLayer` stay `wasrtk.js` module globals, reached through
+`createLayerManager(env)` — layer CRUD (`addLayer`, `newGroup`,
+`deleteLayer`, `moveLayerUp`/`moveLayerDown`, `flattenLayer`),
+`selectLayer`, per-layer field setters (`setLayerOpacity`,
+`setLayerBlendMode`, `setLayerAlphaLocked`, `setLayerClipToBelow`,
+`toggleLayerVisibility`), group-specific actions (`setLayerGroupLocked`,
+`toggleGroupCollapsed`), and `updateLayerList` (the layer list's DOM,
+including group header rows, indented member rows, and every
+control's click/change handlers). `layers`/`currentLayer` stay
+`wasrtk.js` module globals, reached through
 `env.getLayers`/`getCurrentLayer`/`setCurrentLayer` (getters, not
 captured references, for the same undo/redo staleness reason as
-`frame-manager.js`).
+`frame-manager.js`). `moveLayerUp`/`moveLayerDown`/`deleteLayer`/
+`flattenLayer` are group-block-aware via `layer-groups.js`, below.
+
+### `src/renderer/layer-groups.js`
+
+Pure, DOM-free helpers for the single-level (no nesting) layer-group
+model: `computeGroupMembership`, `getBlockRange`,
+`getEffectiveVisibility`/`getEffectiveLocked` (group-ancestry-aware
+visible/locked), and `swapAdjacentBlocks` (the array primitive
+`moveLayerUp`/`moveLayerDown` use to move a whole group as a unit). A
+group is a `type: 'group'` header entry with `memberCount` regular
+layers immediately *below* it in the array (see the file's header
+comment for why); the header carries the same fields every layer does,
+including a real blank canvas in its `frame.layers` mirror, so no other
+code needs a group-aware guard to stay crash-safe -- only code that
+cares about group *semantics* (this module's consumers: layer-manager.js,
+frame-manager.js, exporters.js's `drawVisibleLayersToContext`, and
+`wasrtk.js`'s `getActiveLayerContext`) needs to know groups exist.
 
 ### `src/renderer/event-bindings.js`
 

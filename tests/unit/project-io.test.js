@@ -121,7 +121,7 @@ describe('buildProjectData / serializeProjectData round trip', () => {
     assert.equal(built.frames[0].layers[0].blendMode, 'source-over');
 
     assert.deepEqual(built.layers, [
-      { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over', alphaLocked: false, clipToBelow: false }
+      { id: 0, name: 'Background', type: 'layer', visible: true, locked: false, opacity: 1, blendMode: 'source-over', alphaLocked: false, clipToBelow: false }
     ]);
 
     assert.equal(built.metadata.author, 'WASRTK');
@@ -315,6 +315,96 @@ describe('layer alphaLocked / clipToBelow', () => {
 
     assert.equal(loadedMissing[0].layers[0].alphaLocked, false);
     assert.equal(loadedMissing[0].layers[0].clipToBelow, false);
+  });
+});
+
+describe('layer groups (type/memberCount/collapsed)', () => {
+  function fakeCanvas(label) {
+    return { toDataURL: (type) => `data:${type};base64,${label}` };
+  }
+
+  test('buildProjectData tags plain layers "layer" and omits group-only fields', () => {
+    const input = {
+      frames: [{ id: 0, name: 'Frame 1', timestamp: 111, layers: [
+        { id: 0, name: 'BG', visible: true, locked: false, canvas: fakeCanvas('bg') }
+      ] }],
+      layers: [{ id: 0, name: 'BG', visible: true, locked: false }],
+      canvas: { width: 8, height: 8 },
+      settings: {}
+    };
+
+    const built = buildProjectData(input);
+    assert.equal(built.frames[0].layers[0].type, 'layer');
+    assert.equal('collapsed' in built.frames[0].layers[0], false);
+    assert.equal('memberCount' in built.frames[0].layers[0], false);
+    assert.equal(built.layers[0].type, 'layer');
+  });
+
+  test('buildProjectData serializes a group header\'s type/collapsed/memberCount', () => {
+    const input = {
+      frames: [{ id: 0, name: 'Frame 1', timestamp: 111, layers: [
+        { id: 0, name: 'Member', visible: true, locked: false, canvas: fakeCanvas('m') },
+        { id: 1, name: 'Group 1', type: 'group', visible: true, locked: false, collapsed: true, memberCount: 1, canvas: fakeCanvas('g') }
+      ] }],
+      layers: [
+        { id: 0, name: 'Member', visible: true, locked: false },
+        { id: 1, name: 'Group 1', type: 'group', visible: true, locked: false, collapsed: true, memberCount: 1 }
+      ],
+      canvas: { width: 8, height: 8 },
+      settings: {}
+    };
+
+    const built = buildProjectData(input);
+    assert.equal(built.frames[0].layers[1].type, 'group');
+    assert.equal(built.frames[0].layers[1].collapsed, true);
+    assert.equal(built.frames[0].layers[1].memberCount, 1);
+    assert.equal(built.layers[1].type, 'group');
+    assert.equal(built.layers[1].collapsed, true);
+    assert.equal(built.layers[1].memberCount, 1);
+  });
+
+  async function buildLoadedFrames(layerDataList) {
+    const projectData = { frames: [{ id: 0, name: 'Frame 1', timestamp: 111, layers: layerDataList }] };
+    return buildFramesFromProject({
+      projectData,
+      width: 4,
+      height: 4,
+      createCanvas: () => ({ width: 4, height: 4, getContext: () => ({}) }),
+      loadImageToCanvas: async () => {},
+      applyImageSmoothing: () => {},
+      fillFallbackLayer: () => {}
+    });
+  }
+
+  test('buildFramesFromProject round-trips a group header\'s type/collapsed/memberCount', async () => {
+    const loaded = await buildLoadedFrames([
+      { id: 0, name: 'Member', visible: true, locked: false },
+      { id: 1, name: 'Group 1', type: 'group', visible: true, locked: false, collapsed: true, memberCount: 1 }
+    ]);
+
+    assert.equal(loaded[0].layers[0].type, 'layer');
+    assert.equal(loaded[0].layers[1].type, 'group');
+    assert.equal(loaded[0].layers[1].collapsed, true);
+    assert.equal(loaded[0].layers[1].memberCount, 1);
+  });
+
+  test('buildFramesFromProject defaults an old project file (no type field) to "layer"', async () => {
+    const loaded = await buildLoadedFrames([{ id: 0, name: 'BG', visible: true, locked: false }]);
+    assert.equal(loaded[0].layers[0].type, 'layer');
+    assert.equal('collapsed' in loaded[0].layers[0], false);
+    assert.equal('memberCount' in loaded[0].layers[0], false);
+  });
+
+  test('buildFramesFromProject clamps a garbage memberCount to a non-negative integer', async () => {
+    const loaded = await buildLoadedFrames([
+      { id: 0, name: 'Group 1', type: 'group', visible: true, locked: false, memberCount: -5 }
+    ]);
+    assert.equal(loaded[0].layers[0].memberCount, 0);
+
+    const loadedNaN = await buildLoadedFrames([
+      { id: 0, name: 'Group 1', type: 'group', visible: true, locked: false, memberCount: 'not-a-number' }
+    ]);
+    assert.equal(loadedNaN[0].layers[0].memberCount, 0);
   });
 });
 

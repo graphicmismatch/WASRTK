@@ -4,6 +4,7 @@ const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov, d
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
 const { clampNumber } = require('./math-utils');
 const { BLEND_MODES } = require('./constants');
+const { isGroupHeader, computeGroupMembership, getEffectiveLocked } = require('./layer-groups');
 const { loadTools } = require('./tools');
 const reference = require('./reference');
 const { dedupeColors, hexToRgb, rgbToHex } = require('./color-utils');
@@ -527,15 +528,23 @@ class WASRTK {
 
     // Resolves the current frame/layer/context triple used by most
     // draw/selection/history operations. Returns null when there is no
-    // active layer to draw on, or (unless allowLocked) when it is locked.
+    // active layer to draw on, when it's a group header (nothing to draw
+    // on -- its canvas is a blank placeholder), or (unless allowLocked)
+    // when it or its group is locked.
     getActiveLayerContext({ allowLocked = false } = {}) {
         const frame = frames[currentFrame];
         if (!frame) {
             return null;
         }
         const layer = frame.layers[currentLayer];
-        if (!layer || (!allowLocked && layer.locked)) {
+        if (!layer || isGroupHeader(layer)) {
             return null;
+        }
+        if (!allowLocked) {
+            const membership = computeGroupMembership(frame.layers);
+            if (getEffectiveLocked(frame.layers, membership, currentLayer)) {
+                return null;
+            }
         }
         const ctx = this.getLayerContext(layer);
         return { frame, layer, ctx };
@@ -590,6 +599,7 @@ class WASRTK {
         const initialLayer = {
             id: 0,
             name: 'Background',
+            type: 'layer',
             visible: true,
             locked: false,
             opacity: 1,
@@ -606,7 +616,7 @@ class WASRTK {
 
     initializeLayers() {
         layers = [
-            { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over', alphaLocked: false, clipToBelow: false }
+            { id: 0, name: 'Background', type: 'layer', visible: true, locked: false, opacity: 1, blendMode: 'source-over', alphaLocked: false, clipToBelow: false }
         ];
         this.updateLayerList();
     }
@@ -1072,6 +1082,10 @@ class WASRTK {
         this._layerManager.addLayer();
     }
 
+    newGroup() {
+        this._layerManager.newGroup();
+    }
+
     deleteLayer() {
         this._layerManager.deleteLayer();
     }
@@ -1119,6 +1133,14 @@ class WASRTK {
 
     setLayerClipToBelow(layerIndex, clipToBelow) {
         this._layerManager.setLayerClipToBelow(layerIndex, clipToBelow);
+    }
+
+    setLayerGroupLocked(headerIndex, locked) {
+        this._layerManager.setLayerGroupLocked(headerIndex, locked);
+    }
+
+    toggleGroupCollapsed(headerIndex) {
+        this._layerManager.toggleGroupCollapsed(headerIndex);
     }
 
     updateStatusBar() {
@@ -1509,12 +1531,16 @@ class WASRTK {
             layers = projectData.layers.map((layerData) => ({
                 id: layerData.id,
                 name: layerData.name,
+                type: layerData.type === 'group' ? 'group' : 'layer',
                 visible: layerData.visible,
                 locked: layerData.locked,
                 opacity: clampNumber(layerData.opacity, 1, 0, 1),
                 blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over',
                 alphaLocked: layerData.alphaLocked || false,
-                clipToBelow: layerData.clipToBelow || false
+                clipToBelow: layerData.clipToBelow || false,
+                ...(layerData.type === 'group'
+                    ? { collapsed: layerData.collapsed || false, memberCount: Math.max(0, Math.round(Number(layerData.memberCount) || 0)) }
+                    : {})
             }));
 
             const settings = normalizeProjectSettings(projectData.settings);
