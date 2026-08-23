@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
-const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, drawVisibleLayersToContext } = require('./exporters');
+const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov, drawVisibleLayersToContext } = require('./exporters');
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
 const { clampNumber } = require('./math-utils');
 const { loadTools } = require('./tools');
@@ -1252,6 +1252,9 @@ class WASRTK {
                 case '.gif':
                     await this.saveAsGif(targetPath);
                     break;
+                case '.mov':
+                    await this.saveAsMov(targetPath);
+                    break;
                 default:
                     throw new Error(`Unsupported file format: ${fileExtension}`);
             }
@@ -1345,6 +1348,17 @@ class WASRTK {
             invoke: ipcRenderer.invoke.bind(ipcRenderer),
             createCanvas,
             GIF
+        });
+    }
+
+    async saveAsMov(filePath) {
+        return saveAsMov({
+            filePath,
+            frames,
+            width: mainCanvas.width,
+            height: mainCanvas.height,
+            fps,
+            createCanvas
         });
     }
 

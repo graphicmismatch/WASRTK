@@ -2,12 +2,13 @@
 
 // Unit tests for src/renderer/exporters.js.
 //
-// exporters.js only requires the built-in 'path' module at the top level
-// (checked by reading the source before writing this file) -- it does NOT
-// require('electron'), so no stub/loader is needed to require it directly
-// under node:test. All Electron-shaped dependencies (ipcRenderer.invoke,
-// the GIF constructor, canvas creation) are passed in as function
-// parameters by the caller, so they are faked inline per test instead.
+// exporters.js only requires built-in/plain-Node modules ('path', 'fs',
+// 'os', 'fluent-ffmpeg') at the top level -- it does NOT require('electron'),
+// so no stub/loader is needed to require it directly under node:test. All
+// Electron-shaped dependencies (ipcRenderer.invoke, the GIF constructor,
+// canvas creation) and the real ffmpeg command builder are passed in as
+// function parameters by the caller, so they are faked inline per test
+// instead.
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
@@ -16,7 +17,8 @@ const {
   getMimeType,
   getFrameDelayMs,
   drawVisibleLayersToContext,
-  saveAsGif
+  saveAsGif,
+  saveAsMov
 } = require('../../src/renderer/exporters');
 
 describe('getMimeType', () => {
@@ -298,5 +300,144 @@ describe('saveAsGif', () => {
 
     assert.equal(FakeGIF.lastInstance.options.width, 42);
     assert.equal(FakeGIF.lastInstance.options.height, 24);
+  });
+});
+
+describe('saveAsMov', () => {
+  // Minimal fake of the fluent-ffmpeg command builder. Records the calls
+  // made against it and lets the test control when 'end'/'error' fires.
+  class FakeCommand {
+    constructor() {
+      this.calls = [];
+      this.handlers = {};
+      FakeCommand.lastInstance = this;
+    }
+
+    input(value) {
+      this.calls.push(['input', value]);
+      return this;
+    }
+
+    inputFPS(value) {
+      this.calls.push(['inputFPS', value]);
+      return this;
+    }
+
+    videoFilters(value) {
+      this.calls.push(['videoFilters', value]);
+      return this;
+    }
+
+    videoCodec(value) {
+      this.calls.push(['videoCodec', value]);
+      return this;
+    }
+
+    outputOptions(value) {
+      this.calls.push(['outputOptions', value]);
+      return this;
+    }
+
+    output(value) {
+      this.calls.push(['output', value]);
+      return this;
+    }
+
+    on(event, handler) {
+      this.handlers[event] = handler;
+      return this;
+    }
+
+    run() {
+      const finish = this.handlers.end;
+      if (finish) {
+        Promise.resolve().then(() => finish());
+      }
+    }
+  }
+
+  function fakeCreateCanvas() {
+    return (width, height) => ({
+      width,
+      height,
+      getContext: () => ({
+        clearRect() {},
+        drawImage() {}
+      }),
+      toDataURL: () => `data:image/png;base64,${Buffer.from('fake-png').toString('base64')}`
+    });
+  }
+
+  function fakeFrames(count) {
+    return Array.from({ length: count }, (_, i) => ({
+      layers: [{ visible: true, canvas: `frame-${i}` }]
+    }));
+  }
+
+  test('resolves once ffmpeg reports "end", targeting filePath as output', async () => {
+    await saveAsMov({
+      filePath: '/tmp/out.mov',
+      frames: fakeFrames(2),
+      width: 10,
+      height: 10,
+      fps: 24,
+      createCanvas: fakeCreateCanvas(),
+      createFfmpegCommand: () => new FakeCommand()
+    });
+
+    assert.ok(FakeCommand.lastInstance.calls.some(([call, value]) => call === 'output' && value === '/tmp/out.mov'));
+  });
+
+  test('sets the frame rate from fps via inputFPS', async () => {
+    await saveAsMov({
+      filePath: '/tmp/out.mov',
+      frames: fakeFrames(1),
+      width: 10,
+      height: 10,
+      fps: 24,
+      createCanvas: fakeCreateCanvas(),
+      createFfmpegCommand: () => new FakeCommand()
+    });
+
+    assert.ok(FakeCommand.lastInstance.calls.some(([call, value]) => call === 'inputFPS' && value === 24));
+  });
+
+  test('falls back to 10fps for invalid/non-positive fps', async () => {
+    await saveAsMov({
+      filePath: '/tmp/out.mov',
+      frames: fakeFrames(1),
+      width: 10,
+      height: 10,
+      fps: 0,
+      createCanvas: fakeCreateCanvas(),
+      createFfmpegCommand: () => new FakeCommand()
+    });
+
+    assert.ok(FakeCommand.lastInstance.calls.some(([call, value]) => call === 'inputFPS' && value === 10));
+  });
+
+  test('rejects when ffmpeg reports "error"', async () => {
+    class FailingCommand extends FakeCommand {
+      run() {
+        const fail = this.handlers.error;
+        if (fail) {
+          Promise.resolve().then(() => fail(new Error('ffmpeg exited with code 1')));
+        }
+      }
+    }
+
+    await assert.rejects(
+      () =>
+        saveAsMov({
+          filePath: '/tmp/out.mov',
+          frames: fakeFrames(1),
+          width: 10,
+          height: 10,
+          fps: 24,
+          createCanvas: fakeCreateCanvas(),
+          createFfmpegCommand: () => new FailingCommand()
+        }),
+      /ffmpeg exited with code 1/
+    );
   });
 });

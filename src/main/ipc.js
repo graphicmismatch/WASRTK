@@ -3,6 +3,7 @@ const { ipcMain, desktopCapturer } = require('electron');
 const { THUMBNAIL_SIZE } = require('./constants');
 const { loadThemeConfig, saveThemeConfig, resetThemeConfig } = require('./theme-config');
 const { loadPaletteConfig, savePaletteConfig } = require('./palette-config');
+const { loadLayoutConfig, saveLayoutConfig } = require('./layout-config');
 
 function mapScreenSource(source) {
   return {
@@ -117,6 +118,12 @@ function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPalette
     load: loadPaletteConfig,
     save: savePaletteConfig,
     onUpdated: onPalettesUpdated
+  });
+
+  registerConfigChannels({
+    prefix: 'layout',
+    load: loadLayoutConfig,
+    save: saveLayoutConfig
   });
 
   ipcMain.handle('open-palette-editor-window', async () => {

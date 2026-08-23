@@ -45,4 +45,7 @@ coverage/
 
 # Temporary files
 tmp/
-temp/ 
+temp/
+
+# CodeGraph local index
+.codegraph/ 

@@ -22,7 +22,8 @@ const FILE_FILTERS = {
   projectSave: [{ name: 'WASRTK Projects', extensions: ['wasrtk'] }],
   animationSave: [
     { name: 'PNG Sequence', extensions: ['png'] },
-    { name: 'GIF Animation', extensions: ['gif'] }
+    { name: 'GIF Animation', extensions: ['gif'] },
+    { name: 'MOV Video', extensions: ['mov'] }
   ]
 };
 
