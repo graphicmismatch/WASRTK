@@ -230,8 +230,45 @@ function createFrameManager(env) {
             env.mainCtx.drawImage(env.getReferenceImage(), env.getReferenceX(), env.getReferenceY(), scaledWidth, scaledHeight);
         }
         env.mainCtx.globalAlpha = 1.0;
-        // --- Live update timeline after every frame render ---
-        updateTimeline();
+        // Only refresh the active frame's thumbnail + highlight here --
+        // this runs on every mouse-move sample while drawing, so a full
+        // timeline rebuild (recreating every frame's canvas/listeners) here
+        // made drawing cost grow with frame count. Structural changes
+        // (add/duplicate/delete/reorder) call updateTimeline() themselves.
+        updateActiveFrameThumbnail();
+    }
+
+    function drawFramePreview(previewCanvas, frame) {
+        const previewCtx = previewCanvas.getContext('2d');
+        previewCtx.fillStyle = '#222';
+        previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+        const scaleX = previewCanvas.width / env.mainCanvas.width;
+        const scaleY = previewCanvas.height / env.mainCanvas.height;
+        frame.layers.forEach(layer => {
+            if (layer.visible) {
+                previewCtx.save();
+                previewCtx.globalAlpha = layer.locked ? 0.5 : 1.0;
+                previewCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+                previewCtx.drawImage(layer.canvas, 0, 0);
+                previewCtx.setTransform(1, 0, 0, 1, 0, 0);
+                previewCtx.restore();
+            }
+        });
+    }
+
+    function updateActiveFrameThumbnail() {
+        const timeline = document.getElementById('timeline');
+        const frames = env.getFrames();
+        const currentFrame = env.getCurrentFrame();
+        const frameItems = timeline.querySelectorAll('.frame-item');
+        frameItems.forEach((item, index) => {
+            item.classList.toggle('active', index === currentFrame);
+        });
+        const activeItem = frameItems[currentFrame];
+        const previewCanvas = activeItem?.querySelector('canvas');
+        if (previewCanvas && frames[currentFrame]) {
+            drawFramePreview(previewCanvas, frames[currentFrame]);
+        }
     }
 
     function drawOnionSkinning() {
@@ -308,24 +345,7 @@ function createFrameManager(env) {
             const previewCanvas = document.createElement('canvas');
             previewCanvas.width = 50;
             previewCanvas.height = 40;
-            const previewCtx = previewCanvas.getContext('2d');
-
-            // Fill with background color
-            previewCtx.fillStyle = '#222';
-            previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
-            // Composite all visible layers, scaled to fit
-            const scaleX = previewCanvas.width / env.mainCanvas.width;
-            const scaleY = previewCanvas.height / env.mainCanvas.height;
-            frame.layers.forEach(layer => {
-                if (layer.visible) {
-                    previewCtx.save();
-                    previewCtx.globalAlpha = layer.locked ? 0.5 : 1.0;
-                    previewCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
-                    previewCtx.drawImage(layer.canvas, 0, 0);
-                    previewCtx.setTransform(1, 0, 0, 1, 0, 0);
-                    previewCtx.restore();
-                }
-            });
+            drawFramePreview(previewCanvas, frame);
             // Add the preview canvas to the frame preview div
             const previewDiv = document.createElement('div');
             previewDiv.className = 'frame-preview';
