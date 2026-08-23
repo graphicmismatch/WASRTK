@@ -1,6 +1,7 @@
 const { ipcRenderer } = require('electron');
 const { WASRTK } = require('./wasrtk');
 const { initializeThemeSync } = require('./theme');
+const { makeFloatingPanelDraggable } = require('./floating-panel');
 
 function bootstrap() {
   // process.argv in the renderer reflects Chromium's own subprocess command
@@ -23,6 +24,17 @@ function bootstrap() {
   document.addEventListener('DOMContentLoaded', async () => {
     const app = new WASRTK();
     await initializeThemeSync();
+
+    const { layout } = await ipcRenderer.invoke('load-layout-config');
+    makeFloatingPanelDraggable(
+      document.getElementById('colorPanel'),
+      document.getElementById('colorPanelHandle'),
+      document.querySelector('.main-content'),
+      {
+        initialPosition: layout.colorPanel || undefined,
+        onPositionChange: (position) => ipcRenderer.invoke('save-layout-config', { colorPanel: position })
+      }
+    );
 
     if (isSmoke) {
       // Kept in its own file so index.js stays tiny; only required under
