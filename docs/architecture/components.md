@@ -215,18 +215,21 @@ and a captured reference would go stale across that.
 ### `src/renderer/layer-manager.js`
 
 `createLayerManager(env)` — layer CRUD (`addLayer`, `newGroup`,
-`deleteLayer`, `moveLayerUp`/`moveLayerDown`, `flattenLayer`),
-`selectLayer`, per-layer field setters (`setLayerOpacity`,
-`setLayerBlendMode`, `setLayerAlphaLocked`, `setLayerClipToBelow`,
-`toggleLayerVisibility`), group-specific actions (`setLayerGroupLocked`,
-`toggleGroupCollapsed`), and `updateLayerList` (the layer list's DOM,
-including group header rows, indented member rows, and every
-control's click/change handlers). `layers`/`currentLayer` stay
-`wasrtk.js` module globals, reached through
+`newAdjustmentLayer`, `deleteLayer`, `moveLayerUp`/`moveLayerDown`,
+`flattenLayer`), `selectLayer`, per-layer field setters
+(`setLayerOpacity`, `setLayerBlendMode`, `setLayerAlphaLocked`,
+`setLayerClipToBelow`, `toggleLayerVisibility`), group-specific actions
+(`setLayerGroupLocked`, `toggleGroupCollapsed`), `setAdjustmentParams`,
+and `updateLayerList` (the layer list's DOM, including group header
+rows, indented member rows, per-adjustment-type slider/curve-editor
+controls, and every control's click/change handlers). `layers`/
+`currentLayer` stay `wasrtk.js` module globals, reached through
 `env.getLayers`/`getCurrentLayer`/`setCurrentLayer` (getters, not
 captured references, for the same undo/redo staleness reason as
 `frame-manager.js`). `moveLayerUp`/`moveLayerDown`/`deleteLayer`/
-`flattenLayer` are group-block-aware via `layer-groups.js`, below.
+`flattenLayer` are group-block-aware via `layer-groups.js`, below, and
+also guard against operating on/into an adjustment layer, which (like a
+group header) has no real canvas to draw or flatten onto.
 
 ### `src/renderer/layer-groups.js`
 
@@ -243,6 +246,22 @@ code needs a group-aware guard to stay crash-safe -- only code that
 cares about group *semantics* (this module's consumers: layer-manager.js,
 frame-manager.js, exporters.js's `drawVisibleLayersToContext`, and
 `wasrtk.js`'s `getActiveLayerContext`) needs to know groups exist.
+
+### `src/renderer/adjustment-layers.js`
+
+Non-destructive adjustment layers (`type: 'adjustment'` entries, same
+full-layer shape and blank-canvas-mirror treatment as groups). Pure,
+unit-tested LUT math -- `buildLevelsLUT`, `buildCurvesLUT` (monotonic
+linear interpolation between control points), `applyLUT` -- plus
+canvas-touching `apply*` functions (brightness/contrast and
+hue/saturation are thin native `ctx.filter` wrappers; levels/curves use
+the LUT via `getImageData`/`putImageData`) exercised by the smoke suite
+instead, and `applyAdjustment`, the dispatcher
+`exporters.js:drawVisibleLayersToContext` calls for each adjustment
+entry it encounters mid-composite. `ADJUSTMENT_TYPES`/
+`ADJUSTMENT_DEFAULT_PARAMS`/`ADJUSTMENT_LABELS` back both
+layer-manager.js's creation/UI code and project-io.js's load-time
+defaulting.
 
 ### `src/renderer/event-bindings.js`
 

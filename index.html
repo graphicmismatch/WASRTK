@@ -186,6 +186,15 @@
                         </select>
                         <button id="applyTransformBtn" class="btn btn-small" title="Apply the selected transform to the active selection, or current layer if no selection is active.">Apply</button>
                     </div>
+                    <div class="transform-controls">
+                        <select id="newAdjustmentTypeSelect" title="Choose an adjustment layer type">
+                            <option value="brightness-contrast">Brightness/Contrast</option>
+                            <option value="hue-saturation">Hue/Saturation</option>
+                            <option value="levels">Levels</option>
+                            <option value="curves">Curves</option>
+                        </select>
+                        <button id="newAdjustmentLayerBtn" class="btn btn-small" title="Add a non-destructive adjustment layer of the chosen type above the current selection">Add Adjustment</button>
+                    </div>
                     <div id="layerList" class="layer-list">
                         <div class="layer-item active" data-layer="0">
                             <span class="layer-name">Background</span>

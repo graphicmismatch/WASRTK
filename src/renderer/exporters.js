@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const ffmpeg = require('fluent-ffmpeg');
 const { computeGroupMembership, getEffectiveVisibility, getEffectiveLocked } = require('./layer-groups');
+const { applyAdjustment } = require('./adjustment-layers');
 
 // ffmpeg-static's binary can't execute from inside an asar archive;
 // electron-builder unpacks it to a sibling ".unpacked" directory in packaged
@@ -26,9 +27,10 @@ function getMimeType(fileExtension) {
 // (each layer draws on top of what's already there), which is exactly what
 // clipToBelow needs to mask against: "everything composited so far".
 //
-// `createCanvas` is only required when the frame actually has a clipped
-// layer (used to allocate the scratch canvas for the destination-in mask) --
-// omit it for frames with no clipping, same as before this option existed.
+// `createCanvas` is required whenever the frame has a clipped layer (the
+// destination-in mask's scratch canvas) or an adjustment layer
+// (applyAdjustment's ctx.filter scratch copy) -- omit it only for frames
+// with neither, same as before those needed it.
 // `dimLocked` is an editor-only affordance (the 0.5 alpha shown for a locked
 // layer on the live canvas) and must stay false for exports/samples, which
 // need the true composited result, not an edit-lock indicator.
@@ -38,12 +40,25 @@ function getMimeType(fileExtension) {
 // *does* need group awareness is visibility/lock: a member layer is only
 // effectively visible if it and its group both are (getEffectiveVisibility),
 // and effectively locked -- for dimLocked purposes -- if either is.
+//
+// Adjustment layers (adjustment-layers.js) are the one entry type that
+// *isn't* drawn at all -- their canvas is a blank placeholder too, but
+// unlike a group they have real, order-dependent work to do: applyAdjustment
+// transforms targetCtx's current accumulated content in place (levels,
+// curves, brightness/contrast, hue/saturation), so it has to run in the
+// same bottom-up pass as everything else, at the point in the stack where
+// the adjustment layer sits.
 function drawVisibleLayersToContext(targetCtx, frame, { createCanvas, dimLocked = false } = {}) {
   const layers = Array.isArray(frame?.layers) ? frame.layers : [];
   const membership = computeGroupMembership(layers);
 
   layers.forEach((layer, index) => {
     if (!getEffectiveVisibility(layers, membership, index)) return;
+
+    if (layer.type === 'adjustment') {
+      applyAdjustment(targetCtx, layer, createCanvas);
+      return;
+    }
 
     let sourceCanvas = layer.canvas;
     if (layer.clipToBelow) {

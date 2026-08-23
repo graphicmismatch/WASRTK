@@ -215,16 +215,18 @@ function createFrameManager(env) {
         if (frames.length === 0) return;
         const frame = frames[env.getCurrentFrame()];
 
-        if (frame.layers.some(layer => layer.clipToBelow || layer.type === 'group')) {
+        if (frame.layers.some(layer => layer.clipToBelow || layer.type === 'group' || layer.type === 'adjustment')) {
             // Clipping needs to mask against everything composited below it
-            // via destination-in, and a group needs effective-visibility
-            // cascading for its members -- drawVisibleLayersToContext
-            // handles both, but only by accumulating progressively into
-            // targetCtx, so route through a scratch canvas here instead of
-            // mainCtx directly. Gated behind this check (rather than always
-            // routing through this path) because this function runs on
-            // every mouse-move while drawing, and most frames have neither
-            // clipping nor groups -- skip the extra canvas alloc + blit then.
+            // via destination-in, a group needs effective-visibility
+            // cascading for its members, and an adjustment layer needs to
+            // transform everything composited below it in place --
+            // drawVisibleLayersToContext handles all three, but only by
+            // accumulating progressively into targetCtx, so route through a
+            // scratch canvas here instead of mainCtx directly. Gated behind
+            // this check (rather than always routing through this path)
+            // because this function runs on every mouse-move while drawing,
+            // and most frames have none of the three -- skip the extra
+            // canvas alloc + blit then.
             const { canvas: compositeCanvas, ctx: compositeCtx } = env.createLayerCanvas({
                 width: env.mainCanvas.width,
                 height: env.mainCanvas.height,
@@ -267,14 +269,17 @@ function createFrameManager(env) {
         updateActiveFrameThumbnail();
     }
 
-    // Deliberately doesn't render clipToBelow: doing so needs the same
-    // accumulation-canvas approach as renderCurrentFrame's clip path, which
-    // this function's direct per-layer setTransform+drawImage loop doesn't
-    // have, and thumbnails are a small non-authoritative preview -- not
-    // worth the extra canvas + blit per frame on every timeline rebuild.
-    // Group visibility IS honored (cheap: just filters which layers draw,
-    // no accumulation needed) -- a hidden group should look hidden
-    // everywhere, not just on the main canvas.
+    // Deliberately doesn't render clipToBelow or adjustment-layer effects:
+    // both need the same accumulation-canvas approach as renderCurrentFrame's
+    // clip/adjustment path, which this function's direct per-layer
+    // setTransform+drawImage loop doesn't have, and thumbnails are a small
+    // non-authoritative preview -- not worth the extra canvas + blit per
+    // frame on every timeline rebuild. (An adjustment layer's own canvas is
+    // blank, so drawing it here is already a harmless no-op -- its actual
+    // effect just doesn't show up in the thumbnail.) Group visibility IS
+    // honored (cheap: just filters which layers draw, no accumulation
+    // needed) -- a hidden group should look hidden everywhere, not just on
+    // the main canvas.
     function drawFramePreview(previewCanvas, frame) {
         const previewCtx = previewCanvas.getContext('2d');
         previewCtx.fillStyle = '#222';
@@ -335,11 +340,13 @@ function createFrameManager(env) {
 
     function drawFrameAsOnionSkin(frame, alpha) {
         // Not env.drawVisibleLayersToContext -- that helper now applies each
-        // layer's own opacity/blendMode/clipToBelow (for export/sample-merge
-        // accuracy), which would overwrite the ghost alpha here. Onion skin
-        // wants a flat ghost blend combined with per-layer opacity only,
-        // ignoring blend mode and clipping -- it's a preview aid, not real
-        // compositing.
+        // layer's own opacity/blendMode/clipToBelow and adjustment-layer
+        // effects (for export/sample-merge accuracy), which would overwrite
+        // the ghost alpha here. Onion skin wants a flat ghost blend combined
+        // with per-layer opacity only, ignoring blend mode, clipping, and
+        // adjustments -- it's a preview aid, not real compositing. (An
+        // adjustment layer's own canvas is blank, so drawing it here is
+        // already a harmless no-op -- it just doesn't ghost its effect.)
         const layers = Array.isArray(frame?.layers) ? frame.layers : [];
         const membership = computeGroupMembership(layers);
         layers.forEach((layer, index) => {

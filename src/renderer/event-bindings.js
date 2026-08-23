@@ -331,6 +331,9 @@ function bindLayerEvents(app) {
     document.getElementById('moveLayerDownBtn').addEventListener('click', () => app.moveLayerDown());
     document.getElementById('flattenLayerBtn').addEventListener('click', () => app.flattenLayer());
     document.getElementById('applyTransformBtn').addEventListener('click', () => app.applySelectedTransformAction());
+    document.getElementById('newAdjustmentLayerBtn').addEventListener('click', () => {
+        app.newAdjustmentLayer(document.getElementById('newAdjustmentTypeSelect').value);
+    });
 }
 
 function bindOnionSkinningEvents(app, env) {

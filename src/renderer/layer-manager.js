@@ -31,6 +31,7 @@ const {
     getBlockRange,
     swapAdjacentBlocks
 } = require('./layer-groups');
+const { ADJUSTMENT_TYPES, ADJUSTMENT_DEFAULT_PARAMS, ADJUSTMENT_LABELS, buildCurvesLUT } = require('./adjustment-layers');
 
 // Shared field set every layer entry carries (see layer-groups.js's header
 // comment for why group entries carry the same shape, opacity/blendMode/
@@ -59,27 +60,36 @@ function createLayerManager(env) {
         });
     }
 
-    function addLayer() {
-        if (env.getActiveSelection()) env.clearSelection();
-        env.saveStructureState(); // Save state for undo
+    // Resolves where a brand-new top-level entry (a plain layer or an
+    // adjustment layer -- anything addLayer/newAdjustmentLayer inserts)
+    // should land relative to the current selection: if the selection is a
+    // group (its header, or one of its members), the new entry joins that
+    // group, inserted directly above the selection; otherwise it's
+    // appended at the very end, ungrouped, same as before groups existed.
+    // Bumps the enclosing group's memberCount on its still-correctly-
+    // indexed object immediately -- callers must splice at insertIndex
+    // right after, since once insertIndex <= headerIndex, headerIndex no
+    // longer points at the header.
+    function resolveNewEntryPosition() {
         const layers = env.getLayers();
         const currentLayer = env.getCurrentLayer();
         const membership = computeGroupMembership(layers);
-        // If the current layer is a group (its header, or one of its
-        // members), the new layer joins that group, inserted directly
-        // above the current selection -- otherwise it's appended at the
-        // very end, ungrouped, same as before groups existed.
         const headerIndex = isGroupHeader(layers[currentLayer]) ? currentLayer : membership[currentLayer];
         const insertIndex = headerIndex === null
             ? layers.length
             : (isGroupHeader(layers[currentLayer]) ? currentLayer : currentLayer + 1);
 
-        // Bump the group's memberCount on its still-correctly-indexed
-        // object *before* splicing -- once we splice at insertIndex <=
-        // headerIndex, headerIndex no longer points at the header.
         if (headerIndex !== null) {
             layers[headerIndex].memberCount = (layers[headerIndex].memberCount || 0) + 1;
         }
+        return { insertIndex, headerIndex };
+    }
+
+    function addLayer() {
+        if (env.getActiveSelection()) env.clearSelection();
+        env.saveStructureState(); // Save state for undo
+        const layers = env.getLayers();
+        const { insertIndex, headerIndex } = resolveNewEntryPosition();
 
         const newLayer = {
             id: layers.length,
@@ -136,6 +146,50 @@ function createLayerManager(env) {
             id: newHeader.id, name: newHeader.name, type: newHeader.type,
             collapsed: newHeader.collapsed, memberCount: newHeader.memberCount,
             ...baseLayerFields()
+        });
+
+        env.setCurrentLayer(insertIndex);
+        updateLayerList();
+        env.renderCurrentFrame();
+    }
+
+    // Adds a new non-destructive adjustment layer (levels, curves,
+    // brightness/contrast, or hue/saturation) that transforms everything
+    // composited below it -- see adjustment-layers.js. Positioned the same
+    // way addLayer positions a plain layer (joins the current group if the
+    // selection is inside one, else appended at the top of the stack).
+    function newAdjustmentLayer(adjustmentType) {
+        if (!ADJUSTMENT_TYPES.includes(adjustmentType)) return;
+        if (env.getActiveSelection()) env.clearSelection();
+        env.saveStructureState();
+        const layers = env.getLayers();
+        const { insertIndex, headerIndex } = resolveNewEntryPosition();
+
+        const newLayer = {
+            id: layers.length,
+            name: ADJUSTMENT_LABELS[adjustmentType],
+            type: 'adjustment',
+            adjustmentType,
+            params: { ...ADJUSTMENT_DEFAULT_PARAMS[adjustmentType] },
+            ...baseLayerFields()
+        };
+        layers.splice(insertIndex, 0, newLayer);
+
+        env.getFrames().forEach(frame => {
+            if (headerIndex !== null) {
+                frame.layers[headerIndex].memberCount = (frame.layers[headerIndex].memberCount || 0) + 1;
+            }
+            const { canvas } = env.createLayerCanvas({
+                width: env.mainCanvas.width,
+                height: env.mainCanvas.height,
+                transparent: true,
+                applySmoothing: (ctx) => env.applyImageSmoothing(ctx)
+            });
+            frame.layers.splice(insertIndex, 0, {
+                id: newLayer.id, name: newLayer.name, type: newLayer.type,
+                adjustmentType: newLayer.adjustmentType, params: { ...newLayer.params },
+                ...baseLayerFields(), canvas
+            });
         });
 
         env.setCurrentLayer(insertIndex);
@@ -265,11 +319,21 @@ function createLayerManager(env) {
             alert("Cannot flatten a group.");
             return;
         }
+        if (layers[currentLayer].type === 'adjustment') {
+            alert("Cannot flatten an adjustment layer.");
+            return;
+        }
 
         const layerToFlattenIndex = currentLayer;
         const layerBelowIndex = currentLayer - 1;
         if (isGroupHeader(layers[layerBelowIndex])) {
             alert("Cannot flatten into a group.");
+            return;
+        }
+        if (layers[layerBelowIndex].type === 'adjustment') {
+            // Its canvas is a blank placeholder never drawn -- flattening
+            // into it would silently discard the flattened layer's pixels.
+            alert("Cannot flatten into an adjustment layer.");
             return;
         }
 
@@ -315,6 +379,186 @@ function createLayerManager(env) {
         clearClipToBelowAtBottom();
         updateLayerList();
         env.renderCurrentFrame();
+    }
+
+    // Per-adjustment-type params markup. Sliders for the three types with
+    // scalar params; curves gets a small interactive point editor instead
+    // (see wireCurveEditor) since a curve isn't a handful of scalars.
+    function adjustmentParamsMarkup(layer) {
+        const p = layer.params || {};
+        if (layer.adjustmentType === 'brightness-contrast') {
+            return `
+                <div class="adjustment-slider-row">
+                    <label>Brightness</label>
+                    <input type="range" class="adj-param" data-param="brightness" min="-100" max="100" value="${p.brightness ?? 0}">
+                    <span class="adj-param-value" data-param="brightness">${p.brightness ?? 0}</span>
+                </div>
+                <div class="adjustment-slider-row">
+                    <label>Contrast</label>
+                    <input type="range" class="adj-param" data-param="contrast" min="-100" max="100" value="${p.contrast ?? 0}">
+                    <span class="adj-param-value" data-param="contrast">${p.contrast ?? 0}</span>
+                </div>
+            `;
+        }
+        if (layer.adjustmentType === 'hue-saturation') {
+            return `
+                <div class="adjustment-slider-row">
+                    <label>Hue</label>
+                    <input type="range" class="adj-param" data-param="hue" min="-180" max="180" value="${p.hue ?? 0}">
+                    <span class="adj-param-value" data-param="hue">${p.hue ?? 0}</span>
+                </div>
+                <div class="adjustment-slider-row">
+                    <label>Saturation</label>
+                    <input type="range" class="adj-param" data-param="saturation" min="-100" max="100" value="${p.saturation ?? 0}">
+                    <span class="adj-param-value" data-param="saturation">${p.saturation ?? 0}</span>
+                </div>
+            `;
+        }
+        if (layer.adjustmentType === 'levels') {
+            const gamma = p.gamma ?? 1;
+            return `
+                <div class="adjustment-slider-row">
+                    <label>Black</label>
+                    <input type="range" class="adj-param" data-param="black" min="0" max="255" value="${p.black ?? 0}">
+                    <span class="adj-param-value" data-param="black">${p.black ?? 0}</span>
+                </div>
+                <div class="adjustment-slider-row">
+                    <label>White</label>
+                    <input type="range" class="adj-param" data-param="white" min="0" max="255" value="${p.white ?? 255}">
+                    <span class="adj-param-value" data-param="white">${p.white ?? 255}</span>
+                </div>
+                <div class="adjustment-slider-row">
+                    <label>Gamma</label>
+                    <input type="range" class="adj-param" data-param="gamma" min="1" max="30" value="${Math.round(gamma * 10)}">
+                    <span class="adj-param-value" data-param="gamma">${gamma.toFixed(1)}</span>
+                </div>
+            `;
+        }
+        if (layer.adjustmentType === 'curves') {
+            return `<canvas class="adj-curve-editor" width="150" height="90" title="Click to add or move the nearest point; right-click a point to remove it"></canvas>`;
+        }
+        return '';
+    }
+
+    // Wires the slider rows (brightness-contrast/hue-saturation/levels) or
+    // hands off to the curve editor. Sliders share one drag-save flag
+    // across the group's rows -- each drag is its own discrete
+    // pointerdown-to-change cycle regardless of which slider started it,
+    // so one flag is enough (matches the opacity slider's pattern).
+    function wireAdjustmentControls(layerElement, index, layer) {
+        if (layer.adjustmentType === 'curves') {
+            const canvas = layerElement.querySelector('.adj-curve-editor');
+            if (canvas) wireCurveEditor(canvas, index);
+            return;
+        }
+
+        let dragSaved = false;
+        layerElement.querySelectorAll('.adj-param').forEach((slider) => {
+            const param = slider.dataset.param;
+            const valueEl = layerElement.querySelector(`.adj-param-value[data-param="${param}"]`);
+            slider.addEventListener('pointerdown', () => {
+                if (!dragSaved) {
+                    env.saveStructureState(); // One undo entry per drag, not per tick
+                    dragSaved = true;
+                }
+            });
+            slider.addEventListener('input', (e) => {
+                const rawValue = Number(e.target.value);
+                const value = param === 'gamma' ? rawValue / 10 : rawValue;
+                valueEl.textContent = param === 'gamma' ? value.toFixed(1) : String(value);
+                const currentParams = env.getLayers()[index].params || {};
+                // pointerdown above already saved one undo entry for this drag.
+                setAdjustmentParams(index, { ...currentParams, [param]: value }, { save: false });
+            });
+            slider.addEventListener('change', () => {
+                dragSaved = false;
+            });
+        });
+    }
+
+    // A minimal click-to-add/move/remove curve point editor: click adds a
+    // new point, or moves the nearest existing point (within a small pixel
+    // radius) to the click position; right-click removes the nearest point.
+    // No drag support (v1 scope cut) -- clicking near an existing point
+    // repeatedly still lets a user reshape it, just one click at a time.
+    function wireCurveEditor(canvas, index) {
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const nearThresholdPx = 10;
+
+        function draw() {
+            const points = env.getLayers()[index].params?.points || [];
+            const lut = buildCurvesLUT(points);
+            ctx.fillStyle = '#1f1f29';
+            ctx.fillRect(0, 0, width, height);
+            ctx.strokeStyle = '#96a2b3';
+            ctx.beginPath();
+            for (let x = 0; x < 256; x++) {
+                const px = (x / 255) * width;
+                const py = height - (lut[x] / 255) * height;
+                if (x === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            ctx.fillStyle = '#e8b34f';
+            points.forEach((point) => {
+                const px = (point.x / 255) * width;
+                const py = height - (point.y / 255) * height;
+                ctx.beginPath();
+                ctx.arc(px, py, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function toCurveSpace(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: Math.max(0, Math.min(255, Math.round(((e.clientX - rect.left) / rect.width) * 255))),
+                y: Math.max(0, Math.min(255, Math.round(255 - ((e.clientY - rect.top) / rect.height) * 255)))
+            };
+        }
+
+        function findNearestPointIndex(points, x, y) {
+            const thresholdCurveUnits = (nearThresholdPx / width) * 255;
+            let nearestIndex = -1;
+            let nearestDist = Infinity;
+            points.forEach((point, i) => {
+                const dist = Math.hypot(point.x - x, point.y - y);
+                if (dist < thresholdCurveUnits && dist < nearestDist) {
+                    nearestDist = dist;
+                    nearestIndex = i;
+                }
+            });
+            return nearestIndex;
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const { x, y } = toCurveSpace(e);
+            const points = [...(env.getLayers()[index].params?.points || [])];
+            const nearestIndex = findNearestPointIndex(points, x, y);
+            if (nearestIndex >= 0) {
+                points[nearestIndex] = { x, y };
+            } else {
+                points.push({ x, y });
+            }
+            env.saveStructureState();
+            setAdjustmentParams(index, { points }, { save: false });
+            draw();
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const { x, y } = toCurveSpace(e);
+            const points = [...(env.getLayers()[index].params?.points || [])];
+            const nearestIndex = findNearestPointIndex(points, x, y);
+            if (nearestIndex < 0) return;
+            points.splice(nearestIndex, 1);
+            env.saveStructureState();
+            setAdjustmentParams(index, { points }, { save: false });
+            draw();
+        });
+
+        draw();
     }
 
     // UI update methods
@@ -368,6 +612,22 @@ function createLayerManager(env) {
                 });
 
                 layerElement.querySelector('.layer-group-lock-toggle').addEventListener('change', (e) => setLayerGroupLocked(index, e.target.checked));
+            } else if (layer.type === 'adjustment') {
+                layerElement.innerHTML = `
+                    <div class="layer-item-header">
+                        <div class="layer-info">
+                            <i class="fas fa-sliders-h"></i>
+                            <span class="layer-name">${layer.name}</span>
+                            ${index === env.getCurrentLayer() ? '<i class="fas fa-pencil-alt layer-indicator"></i>' : ''}
+                        </div>
+                        <div class="layer-visibility">
+                            <i class="fas fa-${layer.visible ? 'eye' : 'eye-slash'}"></i>
+                        </div>
+                    </div>
+                    <div class="layer-controls-row layer-adjustment-controls">${adjustmentParamsMarkup(layer)}</div>
+                `;
+
+                wireAdjustmentControls(layerElement, index, layer);
             } else {
                 const opacityPercent = Math.round((layer.opacity ?? 1) * 100);
                 const blendOptions = BLEND_MODES.map(mode =>
@@ -536,9 +796,26 @@ function createLayerManager(env) {
         updateLayerList();
     }
 
+    // Not built on setLayerField: params is an object, and setLayerField's
+    // `layer[field] = value` would assign the *same* object reference into
+    // every frame's mirrored entry (rather than an independent copy like
+    // every other mirrored field gets) -- fine today since nothing mutates
+    // params in place, but a shared reference is a trap for the next
+    // change that does, so each frame gets its own clone here.
+    function setAdjustmentParams(layerIndex, params, { save = true } = {}) {
+        if (save) env.saveStructureState(); // Save for undo, unless the caller already did (e.g. slider drag start)
+        env.getLayers()[layerIndex].params = { ...params };
+        env.getFrames().forEach(frame => {
+            const layer = frame.layers[layerIndex];
+            if (layer) layer.params = { ...params };
+        });
+        env.renderCurrentFrame();
+    }
+
     return {
         addLayer,
         newGroup,
+        newAdjustmentLayer,
         deleteLayer,
         moveLayerUp,
         moveLayerDown,
@@ -551,7 +828,8 @@ function createLayerManager(env) {
         setLayerAlphaLocked,
         setLayerClipToBelow,
         setLayerGroupLocked,
-        toggleGroupCollapsed
+        toggleGroupCollapsed,
+        setAdjustmentParams
     };
 }
 

@@ -637,6 +637,63 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
   });
 
+  // Probe: adjustment layer probe. End-to-end regression guard for
+  // adjustment-layers.js's compositing integration -- paints a mid-gray
+  // test pixel, stacks a brightness-contrast adjustment layer above it,
+  // and checks the composited result actually brightened, un-brightens
+  // when the adjustment is hidden, and that an adjustment layer can't be
+  // selected as a paint target.
+  runProbe(probes, 'adjustmentLayers', () => {
+    const layerList = document.getElementById('layerList');
+    const mainCanvas = document.getElementById('mainCanvas');
+    if (!layerList || !mainCanvas) {
+      throw new Error('layerList or mainCanvas element not found');
+    }
+    const initialCount = layerList.querySelectorAll('.layer-item').length;
+    const testPixel = { x: 250, y: 100 };
+
+    app.selectLayer(0);
+    const baseContext = app.getActiveLayerContext();
+    if (!baseContext) {
+      throw new Error('no active layer context for base paint in adjustmentLayers probe');
+    }
+    baseContext.ctx.globalAlpha = 1;
+    baseContext.ctx.globalCompositeOperation = 'source-over';
+    baseContext.ctx.fillStyle = '#808080'; // mid-gray, so brighter/darker is unambiguous
+    baseContext.ctx.fillRect(testPixel.x, testPixel.y, 1, 1);
+
+    app.newAdjustmentLayer('brightness-contrast');
+    const newLayerIndex = initialCount; // appended at the top, ungrouped
+    const headerRow = layerList.querySelector(`.layer-item[data-layer="${newLayerIndex}"]`);
+    if (!headerRow || headerRow.classList.contains('layer-item-group') || headerRow.classList.contains('layer-item-member')) {
+      throw new Error('newAdjustmentLayer: expected a plain (non-group) row for the new adjustment layer');
+    }
+
+    app.setAdjustmentParams(newLayerIndex, { brightness: 80, contrast: 0 });
+    const brightened = readPixel(mainCanvas, testPixel.x, testPixel.y);
+    if (brightened[0] <= 190) {
+      throw new Error(`adjustmentLayers: expected brightness+80 to noticeably brighten rgb(128,128,128), got red channel ${brightened[0]}`);
+    }
+
+    app.toggleLayerVisibility(newLayerIndex);
+    const unaffected = readPixel(mainCanvas, testPixel.x, testPixel.y);
+    if (unaffected[0] > 190) {
+      throw new Error(`adjustmentLayers: expected the base gray pixel back once the adjustment is hidden, got red channel ${unaffected[0]}`);
+    }
+    app.toggleLayerVisibility(newLayerIndex);
+
+    app.selectLayer(newLayerIndex);
+    if (app.getActiveLayerContext()) {
+      throw new Error('adjustmentLayers: expected getActiveLayerContext to be null for an adjustment layer (nothing to paint on)');
+    }
+
+    app.deleteLayer(); // restore original layer count for later probes
+    const afterDelete = layerList.querySelectorAll('.layer-item');
+    if (afterDelete.length !== initialCount) {
+      throw new Error(`adjustmentLayers: expected ${initialCount} layer-items after cleanup, got ${afterDelete.length}`);
+    }
+  });
+
   // Probe 11: zoom probe. Regression guard for the upcoming zoom.js
   // extraction. Drives only the public zoom methods and reads back through
   // #zoomInput (the DOM updateZoom() writes to) -- the zoom variable is

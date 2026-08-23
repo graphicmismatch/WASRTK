@@ -1,5 +1,6 @@
 const { clampNumber } = require('./math-utils');
 const { BRUSH_PRESETS, SELECTION_MODES, BLEND_MODES, ZOOM_MIN, ZOOM_MAX } = require('./constants');
+const { ADJUSTMENT_TYPES, ADJUSTMENT_DEFAULT_PARAMS } = require('./adjustment-layers');
 
 function parseProjectJson(rawData) {
   let jsonString = rawData;
@@ -18,13 +19,36 @@ function validateProjectData(projectData) {
 }
 
 // Shared by both layer lists below (frame.layers and the top-level
-// metadata layers) -- group-only fields (collapsed, memberCount) are only
-// included for group entries, keeping plain-layer JSON unchanged from
-// before groups existed.
-function serializeLayerGroupFields(layer) {
-  const type = layer.type === 'group' ? 'group' : 'layer';
-  if (type !== 'group') return { type };
-  return { type, collapsed: layer.collapsed || false, memberCount: layer.memberCount || 0 };
+// metadata layers) -- type-specific fields (group's collapsed/memberCount,
+// adjustment's adjustmentType/params) are only included for that type,
+// keeping plain-layer JSON unchanged from before groups/adjustment layers
+// existed.
+function serializeLayerTypeFields(layer) {
+  if (layer.type === 'group') {
+    return { type: 'group', collapsed: layer.collapsed || false, memberCount: layer.memberCount || 0 };
+  }
+  if (layer.type === 'adjustment') {
+    return { type: 'adjustment', adjustmentType: layer.adjustmentType, params: { ...layer.params } };
+  }
+  return { type: 'layer' };
+}
+
+// The load-side counterpart of serializeLayerTypeFields, shared by
+// buildFramesFromProject (below) and wasrtk.js's own project-load path for
+// the top-level `layers` metadata array -- both need the identical
+// type/collapsed/memberCount/adjustmentType/params normalization from a
+// loaded (and therefore untrusted) layerData object.
+function normalizeLayerTypeFields(layerData) {
+  const type = layerData.type === 'group' || layerData.type === 'adjustment' ? layerData.type : 'layer';
+  if (type === 'group') {
+    return { type, collapsed: layerData.collapsed || false, memberCount: Math.max(0, Math.round(Number(layerData.memberCount) || 0)) };
+  }
+  if (type === 'adjustment') {
+    const adjustmentType = ADJUSTMENT_TYPES.includes(layerData.adjustmentType) ? layerData.adjustmentType : 'brightness-contrast';
+    const loadedParams = layerData.params && typeof layerData.params === 'object' ? layerData.params : {};
+    return { type, adjustmentType, params: { ...ADJUSTMENT_DEFAULT_PARAMS[adjustmentType], ...loadedParams } };
+  }
+  return { type };
 }
 
 function buildProjectData({
@@ -50,7 +74,7 @@ function buildProjectData({
       layers: frame.layers.map((layer) => ({
         id: layer.id,
         name: layer.name,
-        ...serializeLayerGroupFields(layer),
+        ...serializeLayerTypeFields(layer),
         visible: layer.visible,
         locked: layer.locked,
         opacity: layer.opacity ?? 1,
@@ -63,7 +87,7 @@ function buildProjectData({
     layers: layers.map((layer) => ({
       id: layer.id,
       name: layer.name,
-      ...serializeLayerGroupFields(layer),
+      ...serializeLayerTypeFields(layer),
       visible: layer.visible,
       locked: layer.locked,
       opacity: layer.opacity ?? 1,
@@ -123,16 +147,13 @@ async function buildFramesFromProject({
       frame.layers.push({
         id: layerData.id,
         name: layerData.name,
-        type: layerData.type === 'group' ? 'group' : 'layer',
+        ...normalizeLayerTypeFields(layerData),
         visible: layerData.visible,
         locked: layerData.locked,
         opacity: clampNumber(layerData.opacity, 1, 0, 1),
         blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over',
         alphaLocked: layerData.alphaLocked || false,
         clipToBelow: layerData.clipToBelow || false,
-        ...(layerData.type === 'group'
-          ? { collapsed: layerData.collapsed || false, memberCount: Math.max(0, Math.round(Number(layerData.memberCount) || 0)) }
-          : {}),
         canvas
       });
     }
@@ -178,5 +199,6 @@ module.exports = {
   buildProjectData,
   serializeProjectData,
   buildFramesFromProject,
-  normalizeProjectSettings
+  normalizeProjectSettings,
+  normalizeLayerTypeFields
 };

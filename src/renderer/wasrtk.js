@@ -1,7 +1,7 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
 const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov, drawVisibleLayersToContext } = require('./exporters');
-const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
+const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings, normalizeLayerTypeFields } = require('./project-io');
 const { clampNumber } = require('./math-utils');
 const { BLEND_MODES } = require('./constants');
 const { isGroupHeader, computeGroupMembership, getEffectiveLocked } = require('./layer-groups');
@@ -443,7 +443,19 @@ class WASRTK {
 
         const frame = frames[currentFrame];
         const layer = frame.layers[currentLayer];
-        if (layer && !layer.locked) {
+        // Neither a group header nor an adjustment layer has a real
+        // canvas to paint on (both carry a blank placeholder never drawn
+        // by the compositor) -- nothing upstream stops a stroke from
+        // starting on one (onStart in stroke-tool.js unconditionally
+        // creates the stroke-preview layer), so without this check the
+        // stroke would preview live and then silently vanish here.
+        // getEffectiveLocked (not layer.locked) so a locked *group*
+        // blocks committing onto its members too, not just a directly
+        // locked layer.
+        const membership = computeGroupMembership(frame.layers);
+        const canCommit = layer && !isGroupHeader(layer) && layer.type !== 'adjustment'
+            && !getEffectiveLocked(frame.layers, membership, currentLayer);
+        if (canCommit) {
             const ctx = this.getLayerContext(layer);
             ctx.save();
             ctx.globalAlpha = currentOpacity;
@@ -528,16 +540,16 @@ class WASRTK {
 
     // Resolves the current frame/layer/context triple used by most
     // draw/selection/history operations. Returns null when there is no
-    // active layer to draw on, when it's a group header (nothing to draw
-    // on -- its canvas is a blank placeholder), or (unless allowLocked)
-    // when it or its group is locked.
+    // active layer to draw on, when it's a group header or an adjustment
+    // layer (neither has a real canvas to draw on -- both carry a blank
+    // placeholder), or (unless allowLocked) when it or its group is locked.
     getActiveLayerContext({ allowLocked = false } = {}) {
         const frame = frames[currentFrame];
         if (!frame) {
             return null;
         }
         const layer = frame.layers[currentLayer];
-        if (!layer || isGroupHeader(layer)) {
+        if (!layer || isGroupHeader(layer) || layer.type === 'adjustment') {
             return null;
         }
         if (!allowLocked) {
@@ -1086,6 +1098,10 @@ class WASRTK {
         this._layerManager.newGroup();
     }
 
+    newAdjustmentLayer(adjustmentType) {
+        this._layerManager.newAdjustmentLayer(adjustmentType);
+    }
+
     deleteLayer() {
         this._layerManager.deleteLayer();
     }
@@ -1141,6 +1157,10 @@ class WASRTK {
 
     toggleGroupCollapsed(headerIndex) {
         this._layerManager.toggleGroupCollapsed(headerIndex);
+    }
+
+    setAdjustmentParams(layerIndex, params, options) {
+        this._layerManager.setAdjustmentParams(layerIndex, params, options);
     }
 
     updateStatusBar() {
@@ -1531,16 +1551,13 @@ class WASRTK {
             layers = projectData.layers.map((layerData) => ({
                 id: layerData.id,
                 name: layerData.name,
-                type: layerData.type === 'group' ? 'group' : 'layer',
+                ...normalizeLayerTypeFields(layerData),
                 visible: layerData.visible,
                 locked: layerData.locked,
                 opacity: clampNumber(layerData.opacity, 1, 0, 1),
                 blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over',
                 alphaLocked: layerData.alphaLocked || false,
-                clipToBelow: layerData.clipToBelow || false,
-                ...(layerData.type === 'group'
-                    ? { collapsed: layerData.collapsed || false, memberCount: Math.max(0, Math.round(Number(layerData.memberCount) || 0)) }
-                    : {})
+                clipToBelow: layerData.clipToBelow || false
             }));
 
             const settings = normalizeProjectSettings(projectData.settings);

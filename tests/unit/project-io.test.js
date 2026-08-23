@@ -408,6 +408,77 @@ describe('layer groups (type/memberCount/collapsed)', () => {
   });
 });
 
+describe('adjustment layers (type/adjustmentType/params)', () => {
+  function fakeCanvas(label) {
+    return { toDataURL: (type) => `data:${type};base64,${label}` };
+  }
+
+  test('buildProjectData serializes an adjustment layer\'s adjustmentType/params, omitting group-only fields', () => {
+    const input = {
+      frames: [{ id: 0, name: 'Frame 1', timestamp: 111, layers: [
+        { id: 0, name: 'Levels', type: 'adjustment', adjustmentType: 'levels', params: { black: 10, white: 240, gamma: 1.2 }, visible: true, locked: false, canvas: fakeCanvas('adj') }
+      ] }],
+      layers: [
+        { id: 0, name: 'Levels', type: 'adjustment', adjustmentType: 'levels', params: { black: 10, white: 240, gamma: 1.2 }, visible: true, locked: false }
+      ],
+      canvas: { width: 8, height: 8 },
+      settings: {}
+    };
+
+    const built = buildProjectData(input);
+    assert.equal(built.frames[0].layers[0].type, 'adjustment');
+    assert.equal(built.frames[0].layers[0].adjustmentType, 'levels');
+    assert.deepEqual(built.frames[0].layers[0].params, { black: 10, white: 240, gamma: 1.2 });
+    assert.equal('collapsed' in built.frames[0].layers[0], false);
+    assert.equal('memberCount' in built.frames[0].layers[0], false);
+    assert.equal(built.layers[0].adjustmentType, 'levels');
+    assert.deepEqual(built.layers[0].params, { black: 10, white: 240, gamma: 1.2 });
+  });
+
+  async function buildLoadedFrames(layerDataList) {
+    const projectData = { frames: [{ id: 0, name: 'Frame 1', timestamp: 111, layers: layerDataList }] };
+    return buildFramesFromProject({
+      projectData,
+      width: 4,
+      height: 4,
+      createCanvas: () => ({ width: 4, height: 4, getContext: () => ({}) }),
+      loadImageToCanvas: async () => {},
+      applyImageSmoothing: () => {},
+      fillFallbackLayer: () => {}
+    });
+  }
+
+  test('buildFramesFromProject round-trips adjustmentType and merges params over the type\'s defaults', async () => {
+    const loaded = await buildLoadedFrames([
+      { id: 0, name: 'Levels', type: 'adjustment', adjustmentType: 'levels', params: { black: 10 }, visible: true, locked: false }
+    ]);
+    assert.equal(loaded[0].layers[0].type, 'adjustment');
+    assert.equal(loaded[0].layers[0].adjustmentType, 'levels');
+    // black: 10 from the file, white/gamma filled from levels' defaults.
+    assert.deepEqual(loaded[0].layers[0].params, { black: 10, white: 255, gamma: 1 });
+  });
+
+  test('buildFramesFromProject falls back to brightness-contrast for an unknown adjustmentType', async () => {
+    const loaded = await buildLoadedFrames([
+      { id: 0, name: 'Weird', type: 'adjustment', adjustmentType: 'not-a-real-type', visible: true, locked: false }
+    ]);
+    assert.equal(loaded[0].layers[0].adjustmentType, 'brightness-contrast');
+    assert.deepEqual(loaded[0].layers[0].params, { brightness: 0, contrast: 0 });
+  });
+
+  test('buildFramesFromProject tolerates a missing or garbage params field', async () => {
+    const missing = await buildLoadedFrames([
+      { id: 0, name: 'BC', type: 'adjustment', adjustmentType: 'brightness-contrast', visible: true, locked: false }
+    ]);
+    assert.deepEqual(missing[0].layers[0].params, { brightness: 0, contrast: 0 });
+
+    const garbage = await buildLoadedFrames([
+      { id: 0, name: 'BC', type: 'adjustment', adjustmentType: 'brightness-contrast', params: 'not-an-object', visible: true, locked: false }
+    ]);
+    assert.deepEqual(garbage[0].layers[0].params, { brightness: 0, contrast: 0 });
+  });
+});
+
 describe('normalizeProjectSettings', () => {
   test('fills in every field with defaults for an empty object', () => {
     const normalized = normalizeProjectSettings({});
