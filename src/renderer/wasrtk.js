@@ -12,6 +12,7 @@ const brushEngine = require('./brush-engine');
 const { createHistory } = require('./history');
 const { createSelectionManager } = require('./selection-manager');
 const { createZoomController } = require('./zoom');
+const { createRulersController } = require('./rulers');
 const { createStatusBar } = require('./status-bar');
 const { createPaletteUI } = require('./palette-ui');
 const { createFrameManager } = require('./frame-manager');
@@ -144,6 +145,10 @@ class WASRTK {
         this._referenceApi = this.buildReferenceApi();
         this.canvasWrapper = document.querySelector('.canvas-wrapper');
         this.tools = loadTools();
+        this._rulers = createRulersController({
+            getZoom: () => zoom,
+            mainCanvas
+        });
         this._zoom = createZoomController({
             getZoom: () => zoom,
             setZoom: (value) => { zoom = value; },
@@ -151,7 +156,8 @@ class WASRTK {
             overlayCanvas,
             canvasWrapper: this.canvasWrapper,
             clampNumber,
-            refreshBrushPreviewFromCursor: () => this.refreshBrushPreviewFromCursor()
+            refreshBrushPreviewFromCursor: () => this.refreshBrushPreviewFromCursor(),
+            redrawRulers: () => this._rulers.redraw()
         });
         this._statusBar = createStatusBar({
             getCurrentTool: () => currentTool,
@@ -1186,6 +1192,10 @@ class WASRTK {
 
     updateZoom() {
         this._zoom.updateZoom();
+    }
+
+    redrawRulers() {
+        this._rulers.redraw();
     }
 
     // Reference image methods

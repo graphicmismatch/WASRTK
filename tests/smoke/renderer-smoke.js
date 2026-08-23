@@ -694,6 +694,75 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
   });
 
+  // Probe: snapping probe. Regression guard for selection-manager.js's
+  // smart-guide snapping (math-utils.js:snapToAxisTargets) -- drags a
+  // selection near the canvas's left edge and checks the magenta guide
+  // line actually gets drawn on the overlay canvas at x=0, then drags it
+  // somewhere with no nearby landmark and checks the guide disappears.
+  runProbe(probes, 'snapping', () => {
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    if (!overlayCanvas) {
+      throw new Error('overlayCanvas element not found');
+    }
+    const isSnapGuideAt = (x, y) => {
+      const p = readPixel(overlayCanvas, x, y);
+      // #ff2d95 -> (255, 45, 149)
+      return p[0] > 200 && p[1] < 100 && p[2] > 100 && p[2] < 200 && p[3] > 0;
+    };
+
+    app.startSelectionInteraction({ x: 100, y: 100 });
+    app.updateSelectionInteraction({ x: 110, y: 110 });
+    app.finishSelectionInteraction();
+
+    // Enter move mode (click inside the selection) and drag its left edge
+    // past the canvas's left edge -- clamped and snapped to x=0.
+    app.startSelectionInteraction({ x: 105, y: 105 });
+    app.updateSelectionInteraction({ x: 3, y: 105 });
+    if (!isSnapGuideAt(0, 50)) {
+      throw new Error('snapping: expected a smart-guide line at the canvas left edge (x=0) when a dragged selection lands there');
+    }
+
+    // Drag to x=180 -- >50px from every landmark (0, center~123, right
+    // edge~246 for a 256-wide canvas with this 10px-wide selection), so no
+    // guide should be showing at the left-edge column anymore.
+    app.updateSelectionInteraction({ x: 185, y: 105 });
+    if (isSnapGuideAt(0, 50)) {
+      throw new Error('snapping: expected no smart-guide line once the selection moved away from every landmark');
+    }
+
+    app.finishSelectionInteraction();
+    app.clearSelection();
+  });
+
+  // Probe: rulers probe. Regression guard for rulers.js's redraw() --
+  // checks both ruler canvases got a non-zero on-screen size from the CSS
+  // grid layout and actually got painted (dark background fill present),
+  // both at startup (via the constructor's resetZoom() -> updateZoom()
+  // chain) and after an explicit redrawRulers() call.
+  runProbe(probes, 'rulers', () => {
+    const hRuler = document.getElementById('rulerHorizontal');
+    const vRuler = document.getElementById('rulerVertical');
+    if (!hRuler || !vRuler) {
+      throw new Error('rulerHorizontal or rulerVertical element not found');
+    }
+    if (hRuler.width === 0 || hRuler.height === 0) {
+      throw new Error(`rulers: rulerHorizontal has zero backing-store size (${hRuler.width}x${hRuler.height})`);
+    }
+    if (vRuler.width === 0 || vRuler.height === 0) {
+      throw new Error(`rulers: rulerVertical has zero backing-store size (${vRuler.width}x${vRuler.height})`);
+    }
+
+    const isDarkFill = (p) => p[0] < 60 && p[1] < 60 && p[2] < 60 && p[3] === 255;
+    if (!isDarkFill(readPixel(hRuler, 2, 2))) {
+      throw new Error('rulers: expected the horizontal ruler\'s dark background fill at startup');
+    }
+
+    app.redrawRulers();
+    if (!isDarkFill(readPixel(vRuler, 2, 2))) {
+      throw new Error('rulers: expected the vertical ruler\'s dark background fill after an explicit redrawRulers()');
+    }
+  });
+
   // Probe 11: zoom probe. Regression guard for the upcoming zoom.js
   // extraction. Drives only the public zoom methods and reads back through
   // #zoomInput (the DOM updateZoom() writes to) -- the zoom variable is

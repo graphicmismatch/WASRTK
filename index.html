@@ -231,15 +231,20 @@
                         <span class="zoom-hint">Ctrl+Scroll to zoom</span>
                     </div>
                 </div>
-                <div class="canvas-wrapper">
-                    <div id="canvas-scaler">
-                        <canvas id="mainCanvas" width="256" height="256"></canvas>
-                        <canvas id="overlayCanvas" width="256" height="256"></canvas>
-                    </div>
-                    <div id="canvasBrushPreview" class="brush-size-preview"></div>
-                    <div id="eyedropperZoomLens" class="eyedropper-zoom-lens" hidden>
-                        <canvas id="eyedropperZoomCanvas" width="120" height="120"></canvas>
-                        <div class="eyedropper-zoom-label" id="eyedropperZoomLabel">#000000</div>
+                <div class="canvas-rulers-grid">
+                    <div class="ruler-corner"></div>
+                    <canvas id="rulerHorizontal" class="ruler ruler-horizontal"></canvas>
+                    <canvas id="rulerVertical" class="ruler ruler-vertical"></canvas>
+                    <div class="canvas-wrapper">
+                        <div id="canvas-scaler">
+                            <canvas id="mainCanvas" width="256" height="256"></canvas>
+                            <canvas id="overlayCanvas" width="256" height="256"></canvas>
+                        </div>
+                        <div id="canvasBrushPreview" class="brush-size-preview"></div>
+                        <div id="eyedropperZoomLens" class="eyedropper-zoom-lens" hidden>
+                            <canvas id="eyedropperZoomCanvas" width="120" height="120"></canvas>
+                            <div class="eyedropper-zoom-label" id="eyedropperZoomLabel">#000000</div>
+                        </div>
                     </div>
                 </div>
             </div>

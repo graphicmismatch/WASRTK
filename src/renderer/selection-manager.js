@@ -23,7 +23,7 @@
 //   getActiveLayerContext(), clearOverlay(), applyImageSmoothing(ctx),
 //   saveState(), renderCurrentFrame()
 //       -- callbacks into the app
-const { clampNumber } = require('./math-utils');
+const { clampNumber, snapToAxisTargets } = require('./math-utils');
 const { floodRegion } = require('./flood-fill');
 const selectionGeometry = require('./selection-geometry');
 const {
@@ -34,11 +34,42 @@ const {
 } = selectionGeometry;
 const { createSelectionTransforms } = require('./selection-transforms');
 
+// ponytail: fixed canvas-pixel snap threshold, not scaled by zoom -- feels
+// looser at low zoom and tighter at high zoom. Thread env.getZoom() through
+// if that turns out to matter in practice.
+const SNAP_THRESHOLD_PX = 6;
+
 function createSelectionManager(env) {
     const { mainCanvas, overlayCtx } = env;
 
     function drawSelectionOutline(bounds, options) {
         selectionGeometry.drawSelectionOutline(overlayCtx, bounds, options);
+    }
+
+    // Draws smart-guide lines on top of whatever's already on the overlay
+    // (the selection outline drawSelectionOutline just drew) -- must run
+    // *after* that call, since drawSelectionOutline clears the overlay
+    // first. guideX/guideY are canvas-space positions, or null to skip
+    // that axis; a move that isn't snapped on either axis is a no-op.
+    function drawSnapGuides(guideX, guideY) {
+        if (guideX === null && guideY === null) return;
+        overlayCtx.save();
+        overlayCtx.strokeStyle = '#ff2d95';
+        overlayCtx.setLineDash([]);
+        overlayCtx.lineWidth = 1;
+        if (guideX !== null) {
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(guideX + 0.5, 0);
+            overlayCtx.lineTo(guideX + 0.5, mainCanvas.height);
+            overlayCtx.stroke();
+        }
+        if (guideY !== null) {
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(0, guideY + 0.5);
+            overlayCtx.lineTo(mainCanvas.width, guideY + 0.5);
+            overlayCtx.stroke();
+        }
+        overlayCtx.restore();
     }
 
     function drawLassoPreview(points, currentPoint) {
@@ -298,9 +329,14 @@ function createSelectionManager(env) {
             const dx = Math.round(coords.x - env.selectionInteraction.start.x);
             const dy = Math.round(coords.y - env.selectionInteraction.start.y);
             const target = clampSelectionPosition(env.activeSelection, env.selectionInteraction.originalX + dx, env.selectionInteraction.originalY + dy);
-            env.activeSelection.x = target.x;
-            env.activeSelection.y = target.y;
+
+            const snapX = snapToAxisTargets(target.x, env.activeSelection.width, mainCanvas.width, SNAP_THRESHOLD_PX);
+            const snapY = snapToAxisTargets(target.y, env.activeSelection.height, mainCanvas.height, SNAP_THRESHOLD_PX);
+            env.activeSelection.x = snapX.value;
+            env.activeSelection.y = snapY.value;
+
             drawSelectionOutline(env.activeSelection, { showPreview: true });
+            drawSnapGuides(snapX.snapped ? snapX.guideLine : null, snapY.snapped ? snapY.guideLine : null);
         }
     }
 

@@ -10,6 +10,8 @@ const { ZOOM_MIN, ZOOM_MAX } = require('./constants');
 //   clampNumber                     -- shared numeric clamp helper
 //   refreshBrushPreviewFromCursor() -- keeps the brush cursor lens in sync
 //                                      with the new zoom level
+//   redrawRulers()                  -- keeps rulers.js in sync with the
+//                                      new zoom level
 function createZoomController(env) {
     function updateZoom() {
         const scaler = document.getElementById('canvas-scaler');
@@ -27,6 +29,7 @@ function createZoomController(env) {
 
         // Update brush size preview to reflect new zoom level
         env.refreshBrushPreviewFromCursor();
+        env.redrawRulers();
     }
 
     function zoomIn() {

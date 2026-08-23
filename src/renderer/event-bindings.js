@@ -416,6 +416,13 @@ function bindPanningEvents(app, env) {
             canvasWrapper.classList.remove('panning');
         }
     });
+
+    // Scrolling (native scrollbar drag, wheel, or the panning above, which
+    // sets scrollLeft/scrollTop directly and so fires 'scroll' too) moves
+    // the canvas's on-screen position without any zoom change -- rulers
+    // need to redraw either way.
+    canvasWrapper.addEventListener('scroll', () => app.redrawRulers());
+    window.addEventListener('resize', () => app.redrawRulers());
 }
 
 function bindKeyboardShortcuts(app, env) {

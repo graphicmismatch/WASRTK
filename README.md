@@ -72,7 +72,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 - [x] Add blend modes (Normal, Multiply, Screen, Overlay, etc.) and per-layer opacity. **Done**
 - [x] Add adjustment layers (levels, curves, hue/saturation, brightness/contrast). **Done**
 - [x] Add clipping masks and alpha-lock workflows for targeted painting. **Done**
-- [ ] Add smart guides, rulers, and snapping for precise layout alignment.
+- [x] Add smart guides, rulers, and snapping for precise layout alignment. **Done**
 
 ### Phase 3 — Productivity and pro workflow
 

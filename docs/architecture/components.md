@@ -118,6 +118,16 @@ selections, and clipboard copy/cut/paste. Selection state itself
 lives in the `wasrtk.js` module globals, reached through `env`
 getter/setter pairs.
 
+The move-drag branch of `updateSelectionInteraction` snaps to canvas
+edges/center via `math-utils.js`'s `snapToAxisTargets` (a fixed
+canvas-pixel threshold, not zoom-scaled -- see the `ponytail:` comment
+by `SNAP_THRESHOLD_PX`) and draws a smart-guide line on the overlay via
+`drawSnapGuides`, called right after `drawSelectionOutline` since that
+clears the overlay first. Snapping only targets canvas landmarks, not
+other layers' content bounds (a scope cut from the original plan --
+computing per-layer bounds needs an alpha-channel scan this pass didn't
+add).
+
 `drawSelectionOutline`, `drawLassoPreview`, and `getSelectionSourceBounds`
 are thin wrappers here -- their real implementations moved to
 `selection-geometry.js` below, which takes the overlay context / canvas
@@ -176,8 +186,24 @@ preset, shape, spacing, antialias, strokeSeed }`, assembled by
 `zoomOut`, `zoomAtPoint` (cursor-anchored wheel/shortcut zoom, scrolling
 the canvas wrapper to keep the point under the cursor fixed), `resetZoom`,
 and `updateZoom` (applies the zoom to `#canvas-scaler`'s size and syncs the
-`#zoomInput`/`#zoomSlider` controls). The `zoom` level itself stays in the
-`wasrtk.js` module globals, reached through `env.getZoom`/`env.setZoom`.
+`#zoomInput`/`#zoomSlider` controls, and calls `env.redrawRulers()` -- the
+one choke point every zoom change routes through). The `zoom` level itself
+stays in the `wasrtk.js` module globals, reached through
+`env.getZoom`/`env.setZoom`.
+
+### `src/renderer/rulers.js`
+
+`createRulersController(env)` — `redraw()`, called on zoom change (via
+`zoom.js`), canvas-wrapper scroll, and window resize. Zoom is CSS
+scaling of `#canvas-scaler`, not a canvas transform, so rather than
+re-deriving zoom+scroll+centering math, `redraw()` just reads
+`mainCanvas.getBoundingClientRect()` (already accounts for all three) to
+find where the canvas origin lands within each ruler strip
+(`#rulerHorizontal`/`#rulerVertical`, added to `index.html`'s
+`.canvas-rulers-grid`). Pure tick math (`chooseTickSpacing` -- a "nice"
+canvas-pixel spacing whose on-screen distance stays readable across the
+zoom range; `computeTickOffsets`) is unit-tested; the canvas-drawing
+half is exercised by the smoke suite.
 
 ### `src/renderer/status-bar.js`
 
@@ -350,6 +376,13 @@ window: `normalizeHexColor`, `dedupeColors`, `hexToRgb`, `rgbToHex`.
 `[min, max]`). Used by brush-settings.js, selection-manager.js,
 canvas-engine.js, event-bindings.js, project-io.js, wasrtk.js, and (via
 `env.clampNumber`) zoom.js.
+
+`snapToAxisTargets(value, size, canvasSize, threshold)` -- 1D drag-snap
+helper used by selection-manager.js's move-drag smart guides (see
+above): snaps to the start edge, end edge, or center of a `canvasSize`
+axis, returning both the snapped value and the on-canvas position a
+caller should draw a guide line at (not always the same value -- see
+the function's own comment).
 
 ### `src/renderer/constants.js`
 
