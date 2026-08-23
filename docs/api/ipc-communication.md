@@ -86,7 +86,21 @@ These read and mutate the shared `theme.json` file in the Electron user data dir
 
 These read and mutate the shared `palettes.json` file in the Electron user data directory. Unlike the theme channels there is no `reset-palettes-config` — palettes are removed individually instead of reset in bulk. `open-palette-editor-window` opens (or focuses, if already open) the Palette Editor window; both the main window's "Open Palette Editor" button and the View menu's "Palette Editor" item lead to it, though the menu item calls the window controller directly rather than through this channel. See `docs/features/palette-editor.md` for the full workflow.
 
-Both the theme and palette channels are registered through the same `registerConfigChannels(...)` helper in `src/main/ipc.js`, backed by the shared `createJsonConfigStore(...)` factory in `src/main/json-config-store.js` (directory creation, corrupt-JSON recovery, and load/save sanitization are implemented once and reused by both stores).
+### Layout channels
+
+- `load-layout-config`
+- `save-layout-config`
+
+Read and mutate the shared `layout.json` file: `{ panels: { [panelId]: {top, left, width, height} } }`, one entry per floating panel (`#toolsPanel`, `#colorPanel`, `#historyPanel`). `save-layout-config` merges the sent partial update onto the currently-stored panels rather than replacing the file, so saving one panel's position/size never drops another panel's already-saved state (`mergePanelsUpdate` in `src/main/layout-config.js`). There is no `reset-layout-config`.
+
+### Shortcuts channels
+
+- `load-shortcuts-config`
+- `save-shortcuts-config`
+
+Read and mutate the shared `shortcuts.json` file: a flat `{ [actionId]: comboString }` override map for the renderer's rebindable actions (`src/renderer/shortcuts.js`'s `rebindable: true` entries -- tool selection, toggle-animation, selection copy/cut/paste). `save-shortcuts-config` sends the whole override map (not a partial merge, unlike layout) since the renderer always holds the full map in memory. There is no `reset-shortcuts-config` -- resetting is done renderer-side by saving an empty map.
+
+Theme, palette, layout, and shortcuts channels are all registered through the same `registerConfigChannels(...)` helper in `src/main/ipc.js`, backed by the shared `createJsonConfigStore(...)` factory in `src/main/json-config-store.js` (directory creation, corrupt-JSON recovery, and load/save sanitization are implemented once and reused by every store).
 
 ## One-way channels sent to the renderer
 
@@ -119,6 +133,11 @@ Defined by `windowController.sendToRenderer(...)` in `src/main/window.js` and co
 - `move-layer-up`
 - `move-layer-down`
 - `flatten-layer`
+
+### Shortcuts actions
+
+- `open-command-palette` — sent by the View menu's "Command Palette" item (`CmdOrCtrl+Shift+P`); opens the `#commandPaletteModal` overlay.
+- `open-shortcuts-panel` — sent by the View menu's "Keyboard Shortcuts..." item; opens the `#shortcutsModal` rebinding panel.
 
 ### Reference/theme actions
 

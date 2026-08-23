@@ -79,6 +79,9 @@ function createMenuTemplate({ menuAction, openAndSend, saveAndSend, getMainWindo
         { label: 'Theme Settings', accelerator: 'CmdOrCtrl+Alt+T', click: openThemeSettingsWindow },
         { label: 'Palette Editor', accelerator: 'CmdOrCtrl+Alt+P', click: openPaletteEditorWindow },
         { type: 'separator' },
+        { label: 'Command Palette', accelerator: 'CmdOrCtrl+Shift+P', click: menuAction('open-command-palette') },
+        { label: 'Keyboard Shortcuts...', click: menuAction('open-shortcuts-panel') },
+        { type: 'separator' },
         { role: 'togglefullscreen', label: 'Toggle Full Screen' }
       ]
     },

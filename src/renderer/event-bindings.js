@@ -2,6 +2,7 @@ const { ipcRenderer } = require('electron');
 const reference = require('./reference');
 const { clampNumber } = require('./math-utils');
 const { SELECTION_MODES, ZOOM_MIN, ZOOM_MAX } = require('./constants');
+const { findMatchingAction } = require('./shortcuts');
 
 // DOM event wiring, moved verbatim from wasrtk.js's setupEventListeners
 // (originally one 464-line function; split here into one registrar per
@@ -129,11 +130,7 @@ function bindBrushAndFillEvents(app, env) {
 
     // Antialiasing toggle
     document.getElementById('antialiasingEnabled').addEventListener('change', (e) => {
-        env.setAntialiasingEnabled(e.target.checked);
-        app.updateAllCanvasSmoothing();
-        app.updateBrushPreview();
-        app.renderCurrentFrame();
-        app.updateStatusBar();
+        app.setAntialiasingEnabled(e.target.checked);
     });
 }
 
@@ -433,24 +430,6 @@ function bindKeyboardShortcuts(app, env) {
 
         const activeSelection = env.getActiveSelection();
 
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && activeSelection) {
-            e.preventDefault();
-            app.copySelectionToClipboard();
-            return;
-        }
-
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x' && activeSelection) {
-            e.preventDefault();
-            app.copySelectionToClipboard({ cut: true });
-            return;
-        }
-
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-            e.preventDefault();
-            app.pasteSelectionFromClipboard();
-            return;
-        }
-
         if ((e.key === 'Delete' || e.key === 'Backspace') && activeSelection) {
             e.preventDefault();
             app.copySelectionToClipboard({ cut: true });
@@ -504,25 +483,18 @@ function bindKeyboardShortcuts(app, env) {
             return;
         }
 
-        const toolByShortcut = {
-            '1': 'pen',
-            '2': 'line',
-            '3': 'rectangle',
-            '4': 'circle',
-            '5': 'fill',
-            '6': 'eraser',
-            '7': 'selection',
-            '8': 'eyedropper'
-        };
-        if (toolByShortcut[e.key]) {
-            app.selectTool(toolByShortcut[e.key]);
-            return;
-        }
-
-        // Prevent default behavior for certain keys
-        if (e.key === ' ') {
-            e.preventDefault(); // Prevent page scroll
-            app.toggleAnimation();
+        // Tool selection, toggle-animation, and selection copy/cut/paste
+        // are the rebindable actions (shortcuts.js); this looks up
+        // whichever key combo the user currently has bound (default or
+        // overridden) rather than a hardcoded key map. Copy/cut additionally
+        // require an active selection, same as before this was registry-driven.
+        const matched = findMatchingAction(app.getResolvedShortcuts(), e);
+        if (matched) {
+            if ((matched.id === 'copy-selection' || matched.id === 'cut-selection') && !activeSelection) {
+                return;
+            }
+            e.preventDefault();
+            matched.handler();
         }
     });
 }

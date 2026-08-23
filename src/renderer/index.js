@@ -27,6 +27,9 @@ function bootstrap() {
     const app = new WASRTK();
     await initializeThemeSync();
 
+    const { overrides } = await ipcRenderer.invoke('load-shortcuts-config');
+    app.loadShortcutOverrides(overrides);
+
     const { layout } = await ipcRenderer.invoke('load-layout-config');
     const bounds = document.querySelector('.main-content');
 

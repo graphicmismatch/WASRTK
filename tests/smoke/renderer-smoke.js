@@ -1004,6 +1004,78 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
   });
 
+  // Probe 14: shortcuts probe (item 8). Covers the three risky new paths
+  // together: the command palette actually executing a registry action by
+  // search, the live keydown listener now dispatching through
+  // findMatchingAction/getResolvedShortcuts instead of a hardcoded key
+  // map (both the default-key case and a rebound key), and the override
+  // round-tripping through shortcuts.json. Restores whatever overrides
+  // existed before this probe ran, using only public app methods.
+  await runAsyncProbe(probes, 'shortcuts', async () => {
+    const originalTool = app.getCurrentToolConfig()?.id;
+    const { overrides: previousOverrides } = await ipcRenderer.invoke('load-shortcuts-config');
+
+    try {
+      app.openCommandPalette();
+      const paletteModal = document.getElementById('commandPaletteModal');
+      if (!paletteModal.classList.contains('show')) {
+        throw new Error('openCommandPalette did not show #commandPaletteModal');
+      }
+      const input = document.getElementById('commandPaletteInput');
+      input.value = 'Rectangle Tool';
+      input.dispatchEvent(new Event('input'));
+      const rows = document.querySelectorAll('#commandPaletteList .command-palette-row');
+      if (rows.length !== 1 || !rows[0].textContent.includes('Rectangle Tool')) {
+        throw new Error(`expected exactly one filtered command palette row for "Rectangle Tool", got ${rows.length}`);
+      }
+      rows[0].click();
+      if (paletteModal.classList.contains('show')) {
+        throw new Error('command palette did not close after executing an action');
+      }
+      if (app.getCurrentToolConfig()?.id !== 'rectangle') {
+        throw new Error('command palette row click did not select the Rectangle tool');
+      }
+
+      app.openShortcutsPanel();
+      const shortcutsModal = document.getElementById('shortcutsModal');
+      if (!shortcutsModal.classList.contains('show')) {
+        throw new Error('openShortcutsPanel did not show #shortcutsModal');
+      }
+      const shortcutRows = document.querySelectorAll('#shortcutsList .shortcut-row');
+      if (shortcutRows.length === 0) {
+        throw new Error('shortcuts panel listed no rebindable rows');
+      }
+
+      app.selectTool('pen');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true }));
+      if (app.getCurrentToolConfig()?.id !== 'rectangle') {
+        throw new Error('default "3" shortcut did not select the Rectangle tool via the live keydown listener');
+      }
+
+      await app.setShortcutOverride('tool-pen', 'Q');
+      app.selectTool('eraser');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
+      if (app.getCurrentToolConfig()?.id !== 'eraser') {
+        throw new Error('"1" still selected the Pen tool after tool-pen was rebound off it');
+      }
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'q', bubbles: true }));
+      if (app.getCurrentToolConfig()?.id !== 'pen') {
+        throw new Error('rebound "q" key did not select the Pen tool');
+      }
+
+      const { overrides: persisted } = await ipcRenderer.invoke('load-shortcuts-config');
+      if (persisted['tool-pen'] !== 'Q') {
+        throw new Error(`override was not persisted to shortcuts.json, got ${JSON.stringify(persisted)}`);
+      }
+    } finally {
+      await app.resetShortcutOverrides();
+      await Promise.all(Object.entries(previousOverrides || {}).map(([id, combo]) => app.setShortcutOverride(id, combo)));
+      app.selectTool(originalTool || 'pen');
+      document.getElementById('commandPaletteModal').classList.remove('show');
+      document.getElementById('shortcutsModal').classList.remove('show');
+    }
+  });
+
   const ok = Object.values(probes).every((probe) => probe.pass) && errors.length === 0;
 
   return {

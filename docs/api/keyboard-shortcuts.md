@@ -2,6 +2,17 @@
 
 This page documents shortcuts that are actually wired in the current repository, either through the Electron menu or explicit renderer listeners.
 
+## Customization
+
+Tool selection, toggle-animation, and selection copy/cut/paste are
+rebindable via View > Keyboard Shortcuts... (click a shortcut's key to
+record a new combo). Everything else on this page is a native Electron
+menu accelerator (`src/main/menu.js`) and is not rebindable, but every
+action -- rebindable or not -- can be searched and run from the command
+palette (`Ctrl/Cmd+Shift+P`, or View > Command Palette). See
+`src/renderer/shortcuts.js` and `docs/architecture/components.md` for the
+implementation.
+
 ## File
 
 - `Ctrl/Cmd+N`: New project
@@ -32,12 +43,15 @@ This page documents shortcuts that are actually wired in the current repository,
 - `5`: Fill
 - `6`: Eraser
 - `7`: Selection
+- `8`: Eyedropper
 - `Escape`: Cancel detached move (or clear active selection)
 
 ## View
 
 - `Ctrl/Cmd+Alt+T`: Open Theme Settings
 - `Ctrl/Cmd+Alt+P`: Open Palette Editor (see [Palette Editor](../features/palette-editor.md))
+- `Ctrl/Cmd+Shift+P`: Open the command palette
+- Keyboard Shortcuts... (no default accelerator): Open the rebinding panel
 
 Standard Electron view roles are also present for reload, force reload, DevTools, and window zoom.
 

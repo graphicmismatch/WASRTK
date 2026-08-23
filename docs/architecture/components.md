@@ -33,7 +33,7 @@ Defines menu sections for:
 
 - File
 - Edit
-- View (includes Theme Settings and Palette Editor)
+- View (includes Theme Settings, Palette Editor, Command Palette, and Keyboard Shortcuts)
 - Animation
 - Layers
 - Reference
@@ -50,6 +50,7 @@ Registers `ipcMain.handle(...)` endpoints for:
 - Theme config load/save/reset/path lookup
 - Palette config load/save/path lookup, plus opening the palette editor window
 - Layout config load/save (floating panel positions/sizes)
+- Shortcuts config load/save (rebindable-action key overrides)
 
 Built on three shared helpers: `handleWithEnvelope` (try/catch ->
 `{ success, error }` envelope), `registerConfigChannels` (the theme/palette
@@ -83,6 +84,16 @@ this pure merge behavior is unit-testable without a real store) rather
 than replacing the file wholesale -- each panel saves its own state
 independently (see `floating-panel.js`), so a plain replace-on-save
 would silently wipe out every *other* panel's saved state on each call.
+
+### `src/main/shortcuts-config.js`
+
+Another `json-config-store` wrapper, `shortcuts.json`: a flat
+`{ [actionId]: comboString }` override map, same dynamic-map sanitize
+shape as `palette-config.js`. Only overrides for actions the renderer's
+`shortcuts.js` registry marks `rebindable: true` are ever honored --
+`resolveShortcuts` ignores anything else, so a stale/hand-edited override
+for a since-removed or non-rebindable action is silently inert rather
+than erroring.
 
 ### `src/main/constants.js`
 
@@ -339,6 +350,44 @@ entry it encounters mid-composite. `ADJUSTMENT_TYPES`/
 layer-manager.js's creation/UI code and project-io.js's load-time
 defaulting.
 
+### `src/renderer/shortcuts.js`
+
+Pure action registry + key-combo logic, no DOM. `createActionRegistry(app)`
+builds the full list of app actions (`{id, label, category, defaultKeys,
+rebindable, handler}`) -- tool selection, toggle-animation, selection
+copy/cut/paste (`rebindable: true`, the only ones the shortcuts panel can
+rebind), plus undo/redo/frame/layer/view actions that mirror Electron menu
+accelerators (`rebindable: false` -- rebuilding `src/main/menu.js`'s native
+accelerators live from user config was scoped out as disproportionate to
+the ask; the command palette can still search+execute these directly since
+`handler` just calls the same `app` method the menu's IPC listener does).
+`resolveShortcuts(registry, overrides)` layers persisted overrides
+(`shortcuts-config.js`) onto `defaultKeys`, ignoring any override for a
+non-rebindable action. `parseKeyCombo`/`formatKeyCombo`/`eventToKeyCombo`/
+`matchesKeyCombo` convert between the `"Ctrl+Shift+P"`-style storage format
+and a canonical `{ctrl, shift, alt, meta, key}` shape, treating Ctrl and
+Cmd as equivalent modifiers (matching the codebase's existing
+`e.ctrlKey || e.metaKey` convention). `findMatchingAction(resolved, e)`
+is what `event-bindings.js`'s live keydown listener calls per keystroke.
+
+### `src/renderer/shortcuts-ui.js`
+
+Two DOM-touching factories, both built once in the `WASRTK` constructor:
+
+- `createCommandPalette(app)` — the `#commandPaletteModal` overlay
+  (`Ctrl/Cmd+Shift+P` or View > Command Palette). Filters
+  `app.getActionRegistry()` (every action, menu-driven and renderer-owned
+  alike) by label/category as the user types; Enter or a row click calls
+  the matched action's `handler()` directly and closes.
+- `createShortcutsPanel(app)` — the `#shortcutsModal` rebinding UI (View >
+  Keyboard Shortcuts...), listing only `rebindable: true` actions.
+  Clicking a row's key button arms a one-shot capture-phase `keydown`
+  listener on `document` (`stopPropagation` so the same keystroke can't
+  also fall through to the live shortcut listener below) that formats the
+  next keypress into a combo and saves it via `app.setShortcutOverride`.
+  Flags (non-blockingly) when two rebindable actions now resolve to the
+  same combo, since `findMatchingAction` only ever returns the first match.
+
 ### `src/renderer/event-bindings.js`
 
 `bindAppEvents(app, env)` — every DOM event listener the main editor
@@ -350,6 +399,14 @@ panning, keyboard shortcuts). Requires `electron`, `./reference`, and
 `./project-io` directly rather than threading `ipcRenderer`/
 `clampNumber` through `env` -- those are stable, already-shared
 utilities, not state this module owns.
+
+`bindKeyboardShortcuts` keeps its selection-specific guards (Delete/
+Backspace, polygon/detached-selection Enter, Escape, arrow-key nudging)
+as direct key checks, since those depend on selection state the registry
+doesn't model; everything rebindable (tools, toggle-animation, selection
+copy/cut/paste) is dispatched via `findMatchingAction(app.getResolvedShortcuts(), e)`
+instead of a hardcoded key map, so a user override actually changes what
+fires.
 
 Almost every call goes through an existing public `WASRTK` method
 (`app.<method>()`), same as any other consumer of the duck-typed `app`

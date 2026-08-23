@@ -426,6 +426,24 @@
         </div>
     </div>
 
+    <div id="commandPaletteModal" class="modal">
+        <div class="modal-content command-palette-content">
+            <input type="text" id="commandPaletteInput" class="command-palette-input" placeholder="Type a command..." autocomplete="off">
+            <div id="commandPaletteList" class="command-palette-list"></div>
+        </div>
+    </div>
+
+    <div id="shortcutsModal" class="modal">
+        <div class="modal-content shortcuts-content">
+            <h2>Keyboard Shortcuts</h2>
+            <div id="shortcutsList" class="shortcuts-list"></div>
+            <div class="modal-buttons">
+                <button id="resetShortcutsBtn" class="btn btn-secondary">Reset All to Defaults</button>
+                <button id="closeShortcutsBtn" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script src="./vendor/gif/gif.js"></script>
     <script src="renderer.js"></script>
 </body>

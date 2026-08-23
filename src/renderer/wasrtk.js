@@ -21,6 +21,8 @@ const { createLayerManager } = require('./layer-manager');
 const { bindAppEvents } = require('./event-bindings');
 const { createCanvasEngine } = require('./canvas-engine');
 const { createBrushSettings } = require('./brush-settings');
+const { createActionRegistry, resolveShortcuts } = require('./shortcuts');
+const { createCommandPalette, createShortcutsPanel } = require('./shortcuts-ui');
 
 // Global variables
 let currentTool = 'pen';
@@ -328,6 +330,13 @@ class WASRTK {
             saveState: () => this.saveState(),
             renderCurrentFrame: () => this.renderCurrentFrame()
         });
+        // Built once `this` exists -- action handlers are closures over
+        // `app` (this), called later, so nothing here needs the rest of
+        // the constructor to have run yet.
+        this.actionRegistry = createActionRegistry(this);
+        this._shortcutOverrides = {};
+        this._commandPalette = createCommandPalette(this);
+        this._shortcutsPanel = createShortcutsPanel(this);
         this.initializeCanvas();
         this.initializeFrames();
         this.initializeLayers();
@@ -589,6 +598,55 @@ class WASRTK {
         });
     }
 
+    // Single choke point for "antialiasing changed, refresh everything
+    // that depends on it" -- was duplicated between the menu's IPC
+    // listener (toggle, no explicit value) and the checkbox's own change
+    // handler (explicit value from the DOM event) before this existed;
+    // both now funnel through here, plus the command palette's action.
+    setAntialiasingEnabled(enabled) {
+        antialiasingEnabled = enabled;
+        document.getElementById('antialiasingEnabled').checked = enabled;
+        this.updateAllCanvasSmoothing();
+        this.updateBrushPreview();
+        this.renderCurrentFrame();
+        this.updateStatusBar();
+    }
+
+    // Shortcut registry: getActionRegistry() is the full action list (for
+    // the command palette); getResolvedShortcuts() layers the persisted
+    // overrides on top (for both the palette's key hints and
+    // event-bindings.js's keydown matching). Overrides only ever apply to
+    // rebindable actions -- see shortcuts.js's resolveShortcuts.
+    getActionRegistry() {
+        return this.actionRegistry;
+    }
+
+    getResolvedShortcuts() {
+        return resolveShortcuts(this.actionRegistry, this._shortcutOverrides);
+    }
+
+    loadShortcutOverrides(overrides) {
+        this._shortcutOverrides = overrides || {};
+    }
+
+    setShortcutOverride(actionId, combo) {
+        this._shortcutOverrides = { ...this._shortcutOverrides, [actionId]: combo };
+        return ipcRenderer.invoke('save-shortcuts-config', this._shortcutOverrides);
+    }
+
+    resetShortcutOverrides() {
+        this._shortcutOverrides = {};
+        return ipcRenderer.invoke('save-shortcuts-config', {});
+    }
+
+    openCommandPalette() {
+        this._commandPalette.open();
+    }
+
+    openShortcutsPanel() {
+        this._shortcutsPanel.open();
+    }
+
     initializeCanvas() {
         // Set canvas size
         mainCanvas.width = 256;
@@ -679,7 +737,6 @@ class WASRTK {
             setPressureSensitivityEnabled: (value) => { pressureSensitivityEnabled = value; },
             setPressureAffectsSize: (value) => { pressureAffectsSize = value; },
             setPressureAffectsFlow: (value) => { pressureAffectsFlow = value; },
-            setAntialiasingEnabled: (value) => { antialiasingEnabled = value; },
             getIsDraggingReference: () => isDraggingReference,
             setIsDraggingReference: (value) => { isDraggingReference = value; },
             getLastMousePos: () => lastMousePos,
@@ -727,13 +784,9 @@ class WASRTK {
                 this.resetReferencePosition();
             }
         });
-        ipcRenderer.on('toggle-antialiasing', () => {
-            antialiasingEnabled = !antialiasingEnabled;
-            document.getElementById('antialiasingEnabled').checked = antialiasingEnabled;
-            this.updateAllCanvasSmoothing();
-            this.renderCurrentFrame();
-            this.updateStatusBar();
-        });
+        ipcRenderer.on('toggle-antialiasing', () => this.setAntialiasingEnabled(!antialiasingEnabled));
+        ipcRenderer.on('open-command-palette', () => this.openCommandPalette());
+        ipcRenderer.on('open-shortcuts-panel', () => this.openShortcutsPanel());
         ipcRenderer.on('palette-config-updated', (event, payload) => {
             this.mergeCustomPalettes(payload.palettes || {});
         });

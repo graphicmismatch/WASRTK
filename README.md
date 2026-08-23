@@ -76,7 +76,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 
 ### Phase 3 — Productivity and pro workflow
 
-- [ ] Add customizable keyboard shortcuts and command palette search.
+- [x] Add customizable keyboard shortcuts and command palette search. **Done** (scope note: only the ~12 renderer-owned shortcuts are rebindable — Electron menu accelerators aren't rebuilt from user config; the command palette can still search+execute every action, menu-driven included — see the architecture doc)
 - [x] Add resizable floating panels (Tools, Colors, History). **Done** (scope note: layers/brush settings/navigator stayed in the fixed sidebar — see the architecture doc)
 - [x] Add robust history timeline with named snapshots and non-linear jump points. **Done**
 - [ ] Add macro/action recording for repeated drawing and editing workflows.

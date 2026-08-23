@@ -4,6 +4,7 @@ const { THUMBNAIL_SIZE } = require('./constants');
 const { loadThemeConfig, saveThemeConfig, resetThemeConfig } = require('./theme-config');
 const { loadPaletteConfig, savePaletteConfig } = require('./palette-config');
 const { loadLayoutConfig, saveLayoutConfig } = require('./layout-config');
+const { loadShortcutsConfig, saveShortcutsConfig } = require('./shortcuts-config');
 
 function mapScreenSource(source) {
   return {
@@ -124,6 +125,12 @@ function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPalette
     prefix: 'layout',
     load: loadLayoutConfig,
     save: saveLayoutConfig
+  });
+
+  registerConfigChannels({
+    prefix: 'shortcuts',
+    load: loadShortcutsConfig,
+    save: saveShortcutsConfig
   });
 
   ipcMain.handle('open-palette-editor-window', async () => {
