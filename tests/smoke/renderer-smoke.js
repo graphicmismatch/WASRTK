@@ -126,6 +126,85 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
   });
 
+  // Probe: historyPanel probe. Regression guard for history.js's
+  // position-pointer rewrite (jumpTo, nameSnapshot, getTimeline) and
+  // history-panel.js's DOM rendering, through the real app rather than the
+  // fake canvas the unit tests use. Draws two dots at different points in
+  // history, names one, jumps around (including a multi-step jump that
+  // crosses the named position several times), and checks both the actual
+  // pixels and the panel DOM reflect the jumped-to state.
+  runProbe(probes, 'historyPanel', () => {
+    const historyList = document.getElementById('historyList');
+    const mainCanvas = document.getElementById('mainCanvas');
+    if (!historyList || !mainCanvas) {
+      throw new Error('historyList or mainCanvas element not found');
+    }
+
+    app.selectLayer(0);
+    const pixelA = { x: 60, y: 200 };
+    const pixelB = { x: 80, y: 200 };
+
+    app.saveState();
+    app.setColor('#00ff00');
+    app.drawPoint(pixelA.x, pixelA.y);
+    const timelineAfterA = app.getHistoryTimeline();
+    const positionAfterA = timelineAfterA[timelineAfterA.length - 1].position;
+    app.nameSnapshot(positionAfterA, 'After green dot');
+
+    app.saveState();
+    app.setColor('#0000ff');
+    app.drawPoint(pixelB.x, pixelB.y);
+    const timelineAfterB = app.getHistoryTimeline();
+    const positionAfterB = timelineAfterB[timelineAfterB.length - 1].position;
+
+    const greenNow = readPixel(mainCanvas, pixelA.x, pixelA.y);
+    const blueNow = readPixel(mainCanvas, pixelB.x, pixelB.y);
+    if (greenNow[1] < 150 || greenNow[0] > 100) {
+      throw new Error(`historyPanel: expected the green dot present, got rgb(${greenNow.slice(0, 3).join(',')})`);
+    }
+    if (blueNow[2] < 150 || blueNow[0] > 100) {
+      throw new Error(`historyPanel: expected the blue dot present, got rgb(${blueNow.slice(0, 3).join(',')})`);
+    }
+
+    // Jump back to "after green dot" -- blue dot should be gone, green
+    // should remain (this is a 1-step jump, but jumpTo's loop is the same
+    // machinery a multi-step jump would use).
+    app.jumpTo(positionAfterA);
+    const blueAfterJumpBack = readPixel(mainCanvas, pixelB.x, pixelB.y);
+    // The background itself is opaque white, so alpha alone can't tell
+    // "still blue" from "back to background" -- check the blue channel
+    // dropped back down instead.
+    if (blueAfterJumpBack[2] > 200 && blueAfterJumpBack[0] < 100) {
+      throw new Error(`historyPanel: expected the blue dot to be gone after jumping back to before it was drawn, got rgb(${blueAfterJumpBack.slice(0, 3).join(',')})`);
+    }
+    const greenStillThere = readPixel(mainCanvas, pixelA.x, pixelA.y);
+    if (greenStillThere[1] < 150) {
+      throw new Error('historyPanel: expected the green dot to remain after jumping back past the blue one');
+    }
+
+    // The label on positionAfterA must survive being crossed multiple
+    // times by other jumps.
+    app.jumpTo(positionAfterB);
+    app.jumpTo(0);
+    app.jumpTo(positionAfterA);
+    const timelineAfterRoundTrip = app.getHistoryTimeline();
+    const namedEntry = timelineAfterRoundTrip.find((entry) => entry.position === positionAfterA);
+    if (!namedEntry || namedEntry.label !== 'After green dot') {
+      throw new Error(`historyPanel: expected the label to survive multiple jumps, got "${namedEntry && namedEntry.label}"`);
+    }
+
+    // The panel DOM reflects the current position.
+    const activeRow = historyList.querySelector('.history-item.active');
+    if (!activeRow) {
+      throw new Error('historyPanel: expected an active .history-item row after jumpTo');
+    }
+    if (activeRow.dataset.position !== String(positionAfterA)) {
+      throw new Error(`historyPanel: expected the active row to be position ${positionAfterA}, got ${activeRow.dataset.position}`);
+    }
+
+    app.jumpTo(positionAfterB); // leave at the tip for later probes
+  });
+
   // Probe 5: selection probe. Create a rectangular selection via the public
   // interaction FSM methods (startSelectionInteraction / updateSelectionInteraction
   // / finishSelectionInteraction, the same ones the selection tool's mouse

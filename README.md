@@ -78,7 +78,7 @@ This roadmap expands WASRTK from a focused animation sketch tool into a full-fea
 
 - [ ] Add customizable keyboard shortcuts and command palette search.
 - [ ] Add dockable/resizable panels (layers, colors, history, navigator, brush settings).
-- [ ] Add robust history timeline with named snapshots and non-linear jump points.
+- [x] Add robust history timeline with named snapshots and non-linear jump points. **Done**
 - [ ] Add macro/action recording for repeated drawing and editing workflows.
 - [ ] Add autosave, crash recovery, and backup version history controls.
 

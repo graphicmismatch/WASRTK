@@ -123,6 +123,48 @@ body {
     overflow-y: auto;
 }
 
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-light);
+}
+
+.history-item:hover {
+    background-color: var(--bg-med);
+}
+
+.history-item.active {
+    background-color: var(--accent);
+    color: var(--accent-contrast);
+    font-weight: 600;
+}
+
+.history-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-item-time {
+    flex-shrink: 0;
+    opacity: 0.7;
+    font-size: 11px;
+}
+
 /* Panels */
 .left-panel, .right-panel {
     width: 280px;

@@ -103,10 +103,32 @@ methods for their public surface.
 
 ### `src/renderer/history.js`
 
-`createHistory(env)` — undo/redo stacks and the operations built on them:
-`saveState`, `discardLastUndoState`, `saveStructureState`, `undo`, `redo`,
-`updateUndoRedoButtons`, `cloneFrames`. The stacks live in this module's
-closure; `wasrtk.js` reaches them only through the returned methods.
+`createHistory(env)` — a single `entries` array + `pointer` index (not
+the original two-stack undo/redo design): `entries[i]` holds the
+swappable delta needed to move between position `i` and `i+1`, replaced
+every time the pointer crosses it (same swap-and-restore the old
+undo()/redo() always did, just unified into one array).
+`saveState`/`saveStructureState` push; `undo`/`redo`/`jumpTo(position)`
+move the pointer, `jumpTo` batching any number of steps into one
+`onAfterRestore()` call. Named snapshots (`nameSnapshot`, read via
+`getTimeline()`) are **not** stored on `entries` -- swappable content
+would lose them on the first crossing -- they live in a separate
+`positionMeta` array keyed by the stable pointer position instead, so a
+label survives any number of undo/redo/jump passes back through it. Both
+arrays live in this module's closure; `wasrtk.js` and `history-panel.js`
+reach them only through the returned methods.
+
+### `src/renderer/history-panel.js`
+
+`createHistoryPanel(env)` — `updateHistoryPanel()`, the DOM renderer for
+the floating History panel (`#historyPanel`/`#historyList` in
+`index.html`, registered as a draggable `floating-panel.js` panel in
+`index.js`, position persisted via `historyPanel` in `layout-config.js`
+alongside the color panel's `colorPanel` key). Click jumps to that
+position (`env.jumpTo`); double-click prompts to rename it
+(`env.nameSnapshot`). Fires on every `history.js` mutation via
+`onHistoryChanged`, not just `onAfterRestore` -- a plain `saveState()`
+push needs the panel to redraw too, not just undo/redo.
 
 ### `src/renderer/selection-manager.js`
 

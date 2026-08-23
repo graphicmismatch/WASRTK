@@ -10,6 +10,7 @@ const reference = require('./reference');
 const { dedupeColors, hexToRgb, rgbToHex } = require('./color-utils');
 const brushEngine = require('./brush-engine');
 const { createHistory } = require('./history');
+const { createHistoryPanel } = require('./history-panel');
 const { createSelectionManager } = require('./selection-manager');
 const { createZoomController } = require('./zoom');
 const { createRulersController } = require('./rulers');
@@ -283,6 +284,11 @@ class WASRTK {
         // env object hands it accessor closures over the module globals it
         // restores (frames/layers/current indices) plus the exact
         // post-restore refresh sequence undo/redo always ran.
+        this._historyPanel = createHistoryPanel({
+            getTimeline: () => this._history.getTimeline(),
+            jumpTo: (position) => this._history.jumpTo(position),
+            nameSnapshot: (position, label) => this._history.nameSnapshot(position, label)
+        });
         this._history = createHistory({
             getFrames: () => frames,
             setFrames: (value) => { frames = value; },
@@ -297,7 +303,8 @@ class WASRTK {
             onAfterRestore: () => {
                 this.renderCurrentFrame();
                 this.updateUI();
-            }
+            },
+            onHistoryChanged: () => this._historyPanel.updateHistoryPanel()
         });
         // Selection subsystem. The selection state stays in the module
         // globals (event handlers and frame/layer ops here read them
@@ -1462,6 +1469,22 @@ class WASRTK {
 
     redo() {
         this._history.redo();
+    }
+
+    jumpTo(position) {
+        this._history.jumpTo(position);
+    }
+
+    nameSnapshot(position, label) {
+        this._history.nameSnapshot(position, label);
+    }
+
+    getHistoryTimeline() {
+        return this._history.getTimeline();
+    }
+
+    updateHistoryPanel() {
+        this._historyPanel.updateHistoryPanel();
     }
 
     updateUndoRedoButtons() {

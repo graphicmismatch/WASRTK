@@ -35,6 +35,16 @@ function bootstrap() {
         onPositionChange: (position) => ipcRenderer.invoke('save-layout-config', { colorPanel: position })
       }
     );
+    makeFloatingPanelDraggable(
+      document.getElementById('historyPanel'),
+      document.getElementById('historyPanelHandle'),
+      document.querySelector('.main-content'),
+      {
+        initialPosition: layout.historyPanel || undefined,
+        onPositionChange: (position) => ipcRenderer.invoke('save-layout-config', { historyPanel: position })
+      }
+    );
+    app.updateHistoryPanel();
 
     if (isSmoke) {
       // Kept in its own file so index.js stays tiny; only required under

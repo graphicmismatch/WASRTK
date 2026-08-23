@@ -3,7 +3,10 @@ const { createJsonConfigStore } = require('./json-config-store');
 
 const LAYOUT_FILE_NAME = 'layout.json';
 
-const DEFAULT_LAYOUT = { colorPanel: null };
+// Per-panel position persistence, one hardcoded key per floating panel --
+// generalizing this to an arbitrary panel-id map is item 7's job
+// (dockable/resizable panels), not this one's.
+const DEFAULT_LAYOUT = { colorPanel: null, historyPanel: null };
 
 function sanitizePosition(position) {
   if (!position || typeof position !== 'object') {
@@ -17,7 +20,10 @@ function sanitizePosition(position) {
 }
 
 function sanitizeLayout(raw) {
-  return { colorPanel: sanitizePosition(raw && raw.colorPanel) };
+  return {
+    colorPanel: sanitizePosition(raw && raw.colorPanel),
+    historyPanel: sanitizePosition(raw && raw.historyPanel)
+  };
 }
 
 const store = createJsonConfigStore({
