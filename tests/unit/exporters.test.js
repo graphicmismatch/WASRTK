@@ -137,6 +137,67 @@ describe('drawVisibleLayersToContext', () => {
     assert.equal(ctx.globalAlpha, 1);
     assert.equal(ctx.globalCompositeOperation, 'source-over');
   });
+
+  test('dimLocked: true halves alpha for a locked layer (the editor-only opt-in)', () => {
+    const ctx = fakeCtx();
+    const seenAlpha = [];
+    const originalDrawImage = ctx.drawImage.bind(ctx);
+    ctx.drawImage = (...args) => {
+      seenAlpha.push(ctx.globalAlpha);
+      originalDrawImage(...args);
+    };
+
+    const layer = { visible: true, canvas: 'canvas-A', opacity: 0.8, locked: true };
+    drawVisibleLayersToContext(ctx, { layers: [layer] }, { dimLocked: true });
+
+    assert.deepEqual(seenAlpha, [0.4]);
+  });
+
+  // Fake canvas/ctx pair whose drawImage records the source's label (or the
+  // source canvas object itself for the un-labeled real-layer case) plus
+  // the compositing state active at the time, so clip masking's call
+  // sequence can be asserted without a real pixel-rendering canvas.
+  function fakeCanvasWithCtx(label) {
+    const canvas = { label };
+    const ctx = {
+      canvas,
+      label,
+      calls: [],
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+      drawImage(source) {
+        this.calls.push({ source: source.label ?? source, compositeOperation: this.globalCompositeOperation });
+      }
+    };
+    canvas.getContext = () => ctx;
+    return { canvas, ctx };
+  }
+
+  test('a clipToBelow layer masks against everything accumulated so far, via a scratch canvas', () => {
+    const { ctx: targetCtx } = fakeCanvasWithCtx('target');
+    const scratches = [];
+    const createCanvas = () => {
+      const scratch = fakeCanvasWithCtx(`scratch${scratches.length}`);
+      scratches.push(scratch);
+      return scratch.canvas;
+    };
+
+    const baseLayer = { visible: true, canvas: { label: 'base' } };
+    const clippedLayer = { visible: true, clipToBelow: true, canvas: { label: 'clipped' } };
+
+    drawVisibleLayersToContext(targetCtx, { layers: [baseLayer, clippedLayer] }, { createCanvas });
+
+    assert.equal(scratches.length, 1);
+    // Scratch canvas: draw the clipped layer's own pixels, then mask them
+    // to whatever's on target so far (destination-in) -- "so far" meaning
+    // just the base layer at this point.
+    assert.deepEqual(scratches[0].ctx.calls.map((c) => c.source), ['clipped', 'target']);
+    assert.equal(scratches[0].ctx.calls[1].compositeOperation, 'destination-in');
+
+    // Target receives the base layer's own canvas directly, then the
+    // *masked scratch canvas* for the clipped layer -- not its raw canvas.
+    assert.deepEqual(targetCtx.calls.map((c) => c.source), ['base', 'scratch0']);
+  });
 });
 
 describe('saveAsGif', () => {

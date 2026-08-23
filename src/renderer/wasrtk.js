@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
-const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov } = require('./exporters');
+const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov, drawVisibleLayersToContext } = require('./exporters');
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings } = require('./project-io');
 const { clampNumber } = require('./math-utils');
 const { BLEND_MODES } = require('./constants');
@@ -202,6 +202,7 @@ class WASRTK {
             mainCanvas,
             mainCtx,
             createLayerCanvas,
+            drawVisibleLayersToContext,
             applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
             clearSelection: () => this.clearSelection(),
             saveStructureState: () => this.saveStructureState(),
@@ -215,6 +216,7 @@ class WASRTK {
             getActiveSelection: () => activeSelection,
             mainCanvas,
             createLayerCanvas,
+            drawVisibleLayersToContext,
             applyImageSmoothing: (ctx) => this.applyImageSmoothing(ctx),
             getLayerContext: (layer) => this.getLayerContext(layer),
             clearSelection: () => this.clearSelection(),
@@ -444,7 +446,13 @@ class WASRTK {
             const ctx = this.getLayerContext(layer);
             ctx.save();
             ctx.globalAlpha = currentOpacity;
-            ctx.globalCompositeOperation = compositeOperation;
+            // alphaLocked confines painting to already-opaque pixels via
+            // native source-atop -- only for the plain-paint case; leave
+            // eraser's destination-out untouched, since it can only ever
+            // remove existing pixels anyway.
+            ctx.globalCompositeOperation = layer.alphaLocked && compositeOperation === 'source-over'
+                ? 'source-atop'
+                : compositeOperation;
             ctx.drawImage(strokeCanvas, 0, 0);
             ctx.restore();
         }
@@ -586,6 +594,8 @@ class WASRTK {
             locked: false,
             opacity: 1,
             blendMode: 'source-over',
+            alphaLocked: false,
+            clipToBelow: false,
             canvas: initialLayerCanvas
         };
 
@@ -596,7 +606,7 @@ class WASRTK {
 
     initializeLayers() {
         layers = [
-            { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over' }
+            { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over', alphaLocked: false, clipToBelow: false }
         ];
         this.updateLayerList();
     }
@@ -1103,6 +1113,14 @@ class WASRTK {
         this._layerManager.setLayerBlendMode(layerIndex, blendMode);
     }
 
+    setLayerAlphaLocked(layerIndex, alphaLocked) {
+        this._layerManager.setLayerAlphaLocked(layerIndex, alphaLocked);
+    }
+
+    setLayerClipToBelow(layerIndex, clipToBelow) {
+        this._layerManager.setLayerClipToBelow(layerIndex, clipToBelow);
+    }
+
     updateStatusBar() {
         this._statusBar.updateStatusBar();
     }
@@ -1494,7 +1512,9 @@ class WASRTK {
                 visible: layerData.visible,
                 locked: layerData.locked,
                 opacity: clampNumber(layerData.opacity, 1, 0, 1),
-                blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over'
+                blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over',
+                alphaLocked: layerData.alphaLocked || false,
+                clipToBelow: layerData.clipToBelow || false
             }));
 
             const settings = normalizeProjectSettings(projectData.settings);

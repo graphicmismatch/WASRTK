@@ -25,6 +25,8 @@
 //                                       -- project settings read by addFrame
 //   mainCanvas, mainCtx                -- canvas elements/context
 //   createLayerCanvas                  -- shared layer-canvas factory
+//   drawVisibleLayersToContext         -- from exporters.js, used only for
+//                                          the clipToBelow accumulation path
 //   applyImageSmoothing(ctx)
 //   clearSelection()
 //   saveStructureState()
@@ -211,16 +213,39 @@ function createFrameManager(env) {
         const frames = env.getFrames();
         if (frames.length === 0) return;
         const frame = frames[env.getCurrentFrame()];
-        // Draw layers of the current frame first
-        frame.layers.forEach(layer => {
-            if (layer.visible) {
-                const opacity = layer.opacity ?? 1;
-                env.mainCtx.globalAlpha = layer.locked ? opacity * 0.5 : opacity;
-                env.mainCtx.globalCompositeOperation = layer.blendMode || 'source-over';
-                env.mainCtx.drawImage(layer.canvas, 0, 0);
-            }
-        });
-        env.mainCtx.globalCompositeOperation = 'source-over';
+
+        if (frame.layers.some(layer => layer.clipToBelow)) {
+            // A clipped layer needs to mask against everything composited
+            // below it via destination-in, which drawVisibleLayersToContext
+            // does by accumulating progressively into targetCtx -- so route
+            // through a scratch canvas here instead of mainCtx directly.
+            // Gated behind the clipToBelow check (rather than always
+            // routing through this path) because this function runs on
+            // every mouse-move while drawing, and most frames have no
+            // clipped layers -- skip the extra canvas alloc + blit then.
+            const { canvas: compositeCanvas, ctx: compositeCtx } = env.createLayerCanvas({
+                width: env.mainCanvas.width,
+                height: env.mainCanvas.height,
+                transparent: true,
+                applySmoothing: (ctx) => env.applyImageSmoothing(ctx)
+            });
+            env.drawVisibleLayersToContext(compositeCtx, frame, {
+                createCanvas: (w, h) => env.createLayerCanvas({ width: w, height: h, transparent: true }).canvas,
+                dimLocked: true
+            });
+            env.mainCtx.drawImage(compositeCanvas, 0, 0);
+        } else {
+            // Draw layers of the current frame first
+            frame.layers.forEach(layer => {
+                if (layer.visible) {
+                    const opacity = layer.opacity ?? 1;
+                    env.mainCtx.globalAlpha = layer.locked ? opacity * 0.5 : opacity;
+                    env.mainCtx.globalCompositeOperation = layer.blendMode || 'source-over';
+                    env.mainCtx.drawImage(layer.canvas, 0, 0);
+                }
+            });
+            env.mainCtx.globalCompositeOperation = 'source-over';
+        }
         // Then, draw onion skinning on top
         if (env.getOnionSkinningEnabled()) {
             drawOnionSkinning();
@@ -240,6 +265,11 @@ function createFrameManager(env) {
         updateActiveFrameThumbnail();
     }
 
+    // Deliberately doesn't render clipToBelow: doing so needs the same
+    // accumulation-canvas approach as renderCurrentFrame's clip path, which
+    // this function's direct per-layer setTransform+drawImage loop doesn't
+    // have, and thumbnails are a small non-authoritative preview -- not
+    // worth the extra canvas + blit per frame on every timeline rebuild.
     function drawFramePreview(previewCanvas, frame) {
         const previewCtx = previewCanvas.getContext('2d');
         previewCtx.fillStyle = '#222';
@@ -299,9 +329,11 @@ function createFrameManager(env) {
 
     function drawFrameAsOnionSkin(frame, alpha) {
         // Not env.drawVisibleLayersToContext -- that helper now applies each
-        // layer's own opacity/blendMode (for export/sample-merge accuracy),
-        // which would overwrite the ghost alpha here. Onion skin wants a
-        // flat ghost blend combined with per-layer opacity, ignoring blend mode.
+        // layer's own opacity/blendMode/clipToBelow (for export/sample-merge
+        // accuracy), which would overwrite the ghost alpha here. Onion skin
+        // wants a flat ghost blend combined with per-layer opacity only,
+        // ignoring blend mode and clipping -- it's a preview aid, not real
+        // compositing.
         const layers = Array.isArray(frame?.layers) ? frame.layers : [];
         layers.forEach((layer) => {
             if (layer.visible) {

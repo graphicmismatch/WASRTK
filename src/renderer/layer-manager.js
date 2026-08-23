@@ -14,6 +14,10 @@
 //   getActiveSelection
 //   mainCanvas
 //   createLayerCanvas
+//   drawVisibleLayersToContext         -- from exporters.js, used by
+//                                          flattenLayer to bake the merged
+//                                          layer's own opacity/blendMode/
+//                                          clipToBelow into the pixels
 //   applyImageSmoothing(ctx)
 //   getLayerContext(layer)
 //   clearSelection()
@@ -33,7 +37,9 @@ function createLayerManager(env) {
             visible: true,
             locked: false,
             opacity: 1,
-            blendMode: 'source-over'
+            blendMode: 'source-over',
+            alphaLocked: false,
+            clipToBelow: false
         };
 
         layers.push(newLayer);
@@ -54,6 +60,8 @@ function createLayerManager(env) {
                 locked: newLayer.locked,
                 opacity: newLayer.opacity,
                 blendMode: newLayer.blendMode,
+                alphaLocked: newLayer.alphaLocked,
+                clipToBelow: newLayer.clipToBelow,
                 canvas: layerCanvas
             });
         });
@@ -80,6 +88,7 @@ function createLayerManager(env) {
             env.setCurrentLayer(layers.length - 1);
         }
 
+        clearClipToBelowAtBottom();
         updateLayerList();
         env.renderCurrentFrame();
     }
@@ -101,6 +110,7 @@ function createLayerManager(env) {
         });
 
         env.setCurrentLayer(currentLayer + 1);
+        clearClipToBelowAtBottom();
         updateLayerList();
         env.renderCurrentFrame();
     }
@@ -122,6 +132,7 @@ function createLayerManager(env) {
         });
 
         env.setCurrentLayer(currentLayer - 1);
+        clearClipToBelowAtBottom();
         updateLayerList();
         env.renderCurrentFrame();
     }
@@ -139,13 +150,23 @@ function createLayerManager(env) {
         const layerToFlattenIndex = currentLayer;
         const layerBelowIndex = currentLayer - 1;
 
-        // Merge layer in each frame
+        // Merge layer in each frame. layerBelow keeps its own
+        // opacity/blendMode/clipToBelow (still applies once, on render);
+        // layerToFlatten's own opacity/blendMode/clipToBelow must be baked
+        // into the pixels now, or they'd silently be dropped (opacity 1,
+        // normal blend) the moment the layers merge. Compositing it the
+        // same way the render loop would -- onto layerBelow's own current
+        // pixels, so clipToBelow masks against the real layer beneath it --
+        // also means an invisible layerToFlatten contributes nothing, same
+        // as it would on render.
         env.getFrames().forEach(frame => {
             const layerToFlatten = frame.layers[layerToFlattenIndex];
             const layerBelow = frame.layers[layerBelowIndex];
-
             const ctxBelow = env.getLayerContext(layerBelow);
-            ctxBelow.drawImage(layerToFlatten.canvas, 0, 0);
+
+            env.drawVisibleLayersToContext(ctxBelow, { layers: [layerToFlatten] }, {
+                createCanvas: (w, h) => env.createLayerCanvas({ width: w, height: h, transparent: true }).canvas
+            });
         });
 
         // Remove the flattened layer from global list
@@ -191,6 +212,16 @@ function createLayerManager(env) {
                     <input type="range" class="layer-opacity-slider slider" min="0" max="100" value="${opacityPercent}" title="Opacity">
                     <span class="layer-opacity-value">${opacityPercent}%</span>
                 </div>
+                <div class="layer-controls-row">
+                    <label class="layer-checkbox-option" title="Confine painting to this layer's already-opaque pixels">
+                        <input type="checkbox" class="layer-alpha-lock-toggle" ${layer.alphaLocked ? 'checked' : ''}>
+                        Alpha Lock
+                    </label>
+                    <label class="layer-checkbox-option" title="${index === 0 ? 'The bottom layer has nothing below it to clip against' : 'Clip this layer to the shape of the layers below it'}">
+                        <input type="checkbox" class="layer-clip-toggle" ${layer.clipToBelow ? 'checked' : ''} ${index === 0 ? 'disabled' : ''}>
+                        Clip
+                    </label>
+                </div>
             `;
 
             const visibilityToggle = layerElement.querySelector('.layer-visibility');
@@ -199,8 +230,9 @@ function createLayerManager(env) {
                 toggleLayerVisibility(index);
             });
 
-            const controlsRow = layerElement.querySelector('.layer-controls-row');
-            controlsRow.addEventListener('click', (e) => e.stopPropagation()); // Don't select layer when using its controls
+            layerElement.querySelectorAll('.layer-controls-row').forEach((row) => {
+                row.addEventListener('click', (e) => e.stopPropagation()); // Don't select layer when using its controls
+            });
 
             const blendSelect = layerElement.querySelector('.layer-blend-select');
             blendSelect.addEventListener('change', (e) => setLayerBlendMode(index, e.target.value));
@@ -222,6 +254,12 @@ function createLayerManager(env) {
             opacitySlider.addEventListener('change', () => {
                 opacityDragSaved = false;
             });
+
+            const alphaLockToggle = layerElement.querySelector('.layer-alpha-lock-toggle');
+            alphaLockToggle.addEventListener('change', (e) => setLayerAlphaLocked(index, e.target.checked));
+
+            const clipToggle = layerElement.querySelector('.layer-clip-toggle');
+            clipToggle.addEventListener('change', (e) => setLayerClipToBelow(index, e.target.checked));
 
             layerElement.addEventListener('click', () => selectLayer(index));
             layerList.prepend(layerElement);
@@ -257,32 +295,54 @@ function createLayerManager(env) {
         env.renderCurrentFrame();
     }
 
-    function setLayerOpacity(layerIndex, opacity, { save = true } = {}) {
-        if (save) env.saveStructureState(); // Save for undo, unless the caller already did (e.g. slider drag start)
-
-        const layers = env.getLayers();
-        layers[layerIndex].opacity = opacity;
+    // Shared body for the per-layer field setters below: a layer's metadata
+    // template (in `layers`) and its mirror in every frame's `frame.layers`
+    // entry (same index) always carry the same value, like visible/locked.
+    function setLayerField(layerIndex, field, value) {
+        env.getLayers()[layerIndex][field] = value;
 
         env.getFrames().forEach(frame => {
             const layer = frame.layers[layerIndex];
-            if (layer) layer.opacity = opacity;
+            if (layer) layer[field] = value;
         });
 
         env.renderCurrentFrame();
     }
 
+    // deleteLayer/moveLayerUp/moveLayerDown are positional array ops that
+    // never look at clipToBelow, so any of them can land a *different*
+    // layer at index 0 while it still carries clipToBelow: true from its
+    // old position -- setLayerClipToBelow's index-0 guard never runs on
+    // these paths. Left uncorrected, renderCurrentFrame's clip branch masks
+    // that layer against a blank accumulator (nothing composited yet at
+    // the bottom of the stack) and it silently vanishes. Called after every
+    // positional mutation to keep the invariant "index 0 never clips" true
+    // regardless of how a layer got there.
+    function clearClipToBelowAtBottom() {
+        if (env.getLayers()[0]?.clipToBelow) {
+            setLayerField(0, 'clipToBelow', false);
+        }
+    }
+
+    function setLayerOpacity(layerIndex, opacity, { save = true } = {}) {
+        if (save) env.saveStructureState(); // Save for undo, unless the caller already did (e.g. slider drag start)
+        setLayerField(layerIndex, 'opacity', opacity);
+    }
+
     function setLayerBlendMode(layerIndex, blendMode) {
         env.saveStructureState(); // Save for undo -- discrete action, like toggleLayerVisibility
+        setLayerField(layerIndex, 'blendMode', blendMode);
+    }
 
-        const layers = env.getLayers();
-        layers[layerIndex].blendMode = blendMode;
+    function setLayerAlphaLocked(layerIndex, alphaLocked) {
+        env.saveStructureState();
+        setLayerField(layerIndex, 'alphaLocked', alphaLocked);
+    }
 
-        env.getFrames().forEach(frame => {
-            const layer = frame.layers[layerIndex];
-            if (layer) layer.blendMode = blendMode;
-        });
-
-        env.renderCurrentFrame();
+    function setLayerClipToBelow(layerIndex, clipToBelow) {
+        if (layerIndex === 0) return; // No layer below the bottom one to clip against
+        env.saveStructureState();
+        setLayerField(layerIndex, 'clipToBelow', clipToBelow);
     }
 
     return {
@@ -295,7 +355,9 @@ function createLayerManager(env) {
         selectLayer,
         toggleLayerVisibility,
         setLayerOpacity,
-        setLayerBlendMode
+        setLayerBlendMode,
+        setLayerAlphaLocked,
+        setLayerClipToBelow
     };
 }
 

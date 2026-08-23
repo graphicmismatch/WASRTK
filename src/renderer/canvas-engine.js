@@ -102,11 +102,15 @@ function createCanvasEngine(app, env) {
     function withDrawContext(useStrokeCtx, draw) {
         const strokeCtx = env.getStrokeCtx();
         const useStrokeLayer = useStrokeCtx && strokeCtx && (env.getCurrentTool() === "pen" || env.getCurrentTool() === "eraser");
-        const ctx = useStrokeLayer ? strokeCtx : (app.getActiveLayerContext()?.ctx ?? null);
+        const layerContext = useStrokeLayer ? null : app.getActiveLayerContext();
+        const ctx = useStrokeLayer ? strokeCtx : (layerContext?.ctx ?? null);
         if (!ctx) return;
         ctx.save();
         app.applyImageSmoothing(ctx);
         ctx.globalAlpha = useStrokeLayer ? 1.0 : env.getCurrentOpacity();
+        if (layerContext?.layer?.alphaLocked) {
+            ctx.globalCompositeOperation = 'source-atop';
+        }
         draw(ctx, useStrokeLayer);
         ctx.restore();
         if (useStrokeLayer) {
@@ -171,20 +175,28 @@ function createCanvasEngine(app, env) {
             );
         };
 
+        // putImageData below bypasses globalCompositeOperation entirely, so
+        // alpha lock can't use the source-atop trick the other paint paths
+        // use -- filter directly on the layer's own existing alpha instead.
+        const alphaLocked = app.getActiveLayerContext()?.layer?.alphaLocked;
+        const blockedByAlphaLock = (pos) => alphaLocked && targetPixels[pos + 3] === 0;
+
         const pixelsToFill = [];
 
         if (fillContiguous) {
             floodRegion(samplePixels, width, height, safeStartX, safeStartY, fillTolerance).forEach(({ pos }) => {
-                if (targetPixels[pos] !== fillR ||
+                if (!blockedByAlphaLock(pos) &&
+                    (targetPixels[pos] !== fillR ||
                     targetPixels[pos + 1] !== fillG ||
                     targetPixels[pos + 2] !== fillB ||
-                    targetPixels[pos + 3] !== fillA) {
+                    targetPixels[pos + 3] !== fillA)) {
                     pixelsToFill.push(pos);
                 }
             });
         } else {
             for (let pos = 0; pos < samplePixels.length; pos += 4) {
-                if (colorDistance(pos) <= fillTolerance &&
+                if (!blockedByAlphaLock(pos) &&
+                    colorDistance(pos) <= fillTolerance &&
                     (targetPixels[pos] !== fillR ||
                     targetPixels[pos + 1] !== fillG ||
                     targetPixels[pos + 2] !== fillB ||
@@ -215,7 +227,7 @@ function createCanvasEngine(app, env) {
         const tempCtx = tempCanvas.getContext('2d');
         app.applyImageSmoothing(tempCtx);
 
-        drawVisibleLayersToContext(tempCtx, frame);
+        drawVisibleLayersToContext(tempCtx, frame, { createCanvas: env.createCanvas });
 
         return tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
     }
@@ -333,60 +345,71 @@ function createCanvasEngine(app, env) {
     function commitShape(start, end, tool, { keepSquare = false } = {}) {
         const layerContext = app.getActiveLayerContext();
         if (!layerContext) return;
-        const { ctx } = layerContext;
+        const { ctx, layer } = layerContext;
 
-        if (env.getAntialiasingEnabled()) {
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
+        // ctx is cached per-layer (getLayerContext) and reused across calls
+        // with no save/restore around this function otherwise, so a
+        // leftover source-atop would silently confine some later,
+        // unrelated draw call to opaque pixels too -- reset on every exit
+        // path (finally), including the early return below.
+        try {
+            ctx.globalCompositeOperation = layer.alphaLocked ? 'source-atop' : 'source-over';
 
-            const startCoords = start;
-            const endCoords = getConstrainedShapeEndPoint(start, end, { keepSquare, tool });
-            ctx.strokeStyle = env.getCurrentColor();
-            ctx.lineWidth = env.getBrushSize();
-            ctx.globalAlpha = env.getCurrentOpacity();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = tool === 'rectangle' ? 'miter' : 'round';
-            buildShapePath(ctx, startCoords, endCoords, tool);
-            ctx.stroke();
-        } else {
-            ctx.imageSmoothingEnabled = false;
+            if (env.getAntialiasingEnabled()) {
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
 
-            const startCoords = app.roundToPixel(start.x, start.y);
-            const constrainedEnd = getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
-            const endCoords = app.roundToPixel(constrainedEnd.x, constrainedEnd.y);
+                const startCoords = start;
+                const endCoords = getConstrainedShapeEndPoint(start, end, { keepSquare, tool });
+                ctx.strokeStyle = env.getCurrentColor();
+                ctx.lineWidth = env.getBrushSize();
+                ctx.globalAlpha = env.getCurrentOpacity();
+                ctx.lineCap = 'round';
+                ctx.lineJoin = tool === 'rectangle' ? 'miter' : 'round';
+                buildShapePath(ctx, startCoords, endCoords, tool);
+                ctx.stroke();
+            } else {
+                ctx.imageSmoothingEnabled = false;
 
-            ctx.fillStyle = env.getCurrentColor();
-            ctx.strokeStyle = env.getCurrentColor();
-            ctx.globalAlpha = env.getCurrentOpacity();
+                const startCoords = app.roundToPixel(start.x, start.y);
+                const constrainedEnd = getConstrainedShapeEndPoint(startCoords, end, { keepSquare, tool });
+                const endCoords = app.roundToPixel(constrainedEnd.x, constrainedEnd.y);
 
-            if (tool === "line") {
-                app.drawPixelPerfectLineWithFillRect(ctx, startCoords.x, startCoords.y, endCoords.x, endCoords.y);
-            } else if (tool === "rectangle") {
-                const x = Math.min(startCoords.x, endCoords.x);
-                const y = Math.min(startCoords.y, endCoords.y);
-                const width = Math.abs(endCoords.x - startCoords.x);
-                const height = Math.abs(endCoords.y - startCoords.y);
-                const bs = Math.round(env.getBrushSize());
-                if (bs <= 0) return;
+                ctx.fillStyle = env.getCurrentColor();
+                ctx.strokeStyle = env.getCurrentColor();
+                ctx.globalAlpha = env.getCurrentOpacity();
 
-                if (bs * 2 > width || bs * 2 > height) {
-                    ctx.fillRect(x, y, width, height);
-                } else {
-                    ctx.fillRect(x, y, width, bs);
-                    ctx.fillRect(x, y + height - bs, width, bs);
-                    ctx.fillRect(x, y + bs, bs, height - 2 * bs);
-                    ctx.fillRect(x + width - bs, y + bs, bs, height - 2 * bs);
+                if (tool === "line") {
+                    app.drawPixelPerfectLineWithFillRect(ctx, startCoords.x, startCoords.y, endCoords.x, endCoords.y);
+                } else if (tool === "rectangle") {
+                    const x = Math.min(startCoords.x, endCoords.x);
+                    const y = Math.min(startCoords.y, endCoords.y);
+                    const width = Math.abs(endCoords.x - startCoords.x);
+                    const height = Math.abs(endCoords.y - startCoords.y);
+                    const bs = Math.round(env.getBrushSize());
+                    if (bs <= 0) return;
+
+                    if (bs * 2 > width || bs * 2 > height) {
+                        ctx.fillRect(x, y, width, height);
+                    } else {
+                        ctx.fillRect(x, y, width, bs);
+                        ctx.fillRect(x, y + height - bs, width, bs);
+                        ctx.fillRect(x, y + bs, bs, height - 2 * bs);
+                        ctx.fillRect(x + width - bs, y + bs, bs, height - 2 * bs);
+                    }
+                } else if (tool === "circle") {
+                    const rx = (endCoords.x - startCoords.x) / 2;
+                    const ry = (endCoords.y - startCoords.y) / 2;
+                    const cx = startCoords.x + rx;
+                    const cy = startCoords.y + ry;
+                    app.drawPixelPerfectCircleWithFillRect(ctx, cx, cy, rx, ry);
                 }
-            } else if (tool === "circle") {
-                const rx = (endCoords.x - startCoords.x) / 2;
-                const ry = (endCoords.y - startCoords.y) / 2;
-                const cx = startCoords.x + rx;
-                const cy = startCoords.y + ry;
-                app.drawPixelPerfectCircleWithFillRect(ctx, cx, cy, rx, ry);
             }
-        }
 
-        app.renderCurrentFrame();
+            app.renderCurrentFrame();
+        } finally {
+            ctx.globalCompositeOperation = 'source-over';
+        }
     }
 
     return {

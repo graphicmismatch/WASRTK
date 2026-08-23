@@ -44,6 +44,8 @@ function buildProjectData({
         locked: layer.locked,
         opacity: layer.opacity ?? 1,
         blendMode: layer.blendMode || 'source-over',
+        alphaLocked: layer.alphaLocked || false,
+        clipToBelow: layer.clipToBelow || false,
         data: layer.canvas.toDataURL('image/png')
       }))
     })),
@@ -53,7 +55,9 @@ function buildProjectData({
       visible: layer.visible,
       locked: layer.locked,
       opacity: layer.opacity ?? 1,
-      blendMode: layer.blendMode || 'source-over'
+      blendMode: layer.blendMode || 'source-over',
+      alphaLocked: layer.alphaLocked || false,
+      clipToBelow: layer.clipToBelow || false
     })),
     settings,
     metadata: {
@@ -111,6 +115,8 @@ async function buildFramesFromProject({
         locked: layerData.locked,
         opacity: clampNumber(layerData.opacity, 1, 0, 1),
         blendMode: BLEND_MODES.some((mode) => mode.value === layerData.blendMode) ? layerData.blendMode : 'source-over',
+        alphaLocked: layerData.alphaLocked || false,
+        clipToBelow: layerData.clipToBelow || false,
         canvas
       });
     }

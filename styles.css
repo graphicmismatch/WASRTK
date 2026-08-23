@@ -839,6 +839,22 @@ body {
     flex-shrink: 0;
 }
 
+.layer-checkbox-option {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-light);
+    cursor: pointer;
+}
+
+.layer-checkbox-option input[type="checkbox"] {
+    width: 13px;
+    height: 13px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
 .layer-name {
     font-size: 14px;
 }

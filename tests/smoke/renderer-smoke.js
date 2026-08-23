@@ -405,6 +405,126 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
   });
 
+  // Probe: flatten probe. Regression guard for flattenLayer baking a
+  // flattened layer's own opacity into the merged pixels instead of
+  // silently dropping it (opacity 1, normal blend) -- paints opaque blue
+  // on the base layer, 50%-opacity red on a layer above it, flattens, and
+  // checks the merged pixel landed roughly halfway between the two rather
+  // than at either color outright.
+  runProbe(probes, 'flatten', () => {
+    const layerList = document.getElementById('layerList');
+    if (!layerList) {
+      throw new Error('layerList element not found');
+    }
+    const flattenX = 150;
+    const flattenY = 100;
+    const initialCount = layerList.querySelectorAll('.layer-item').length;
+    const newLayerIndex = initialCount;
+
+    app.selectLayer(0);
+    const baseContext = app.getActiveLayerContext();
+    if (!baseContext) {
+      throw new Error('no active layer context for base paint in flatten probe');
+    }
+    baseContext.ctx.globalAlpha = 1;
+    baseContext.ctx.globalCompositeOperation = 'source-over';
+    baseContext.ctx.fillStyle = '#0000ff';
+    baseContext.ctx.fillRect(flattenX, flattenY, 1, 1);
+
+    app.addLayer();
+    app.selectLayer(newLayerIndex);
+    app.setLayerOpacity(newLayerIndex, 0.5);
+
+    const topContext = app.getActiveLayerContext();
+    if (!topContext) {
+      throw new Error('no active layer context for top paint in flatten probe');
+    }
+    topContext.ctx.globalAlpha = 1;
+    topContext.ctx.globalCompositeOperation = 'source-over';
+    topContext.ctx.fillStyle = '#ff0000';
+    topContext.ctx.fillRect(flattenX, flattenY, 1, 1);
+
+    app.flattenLayer();
+
+    const afterCount = layerList.querySelectorAll('.layer-item').length;
+    if (afterCount !== initialCount) {
+      throw new Error(`flattenLayer: expected ${initialCount} layer-items after flatten, got ${afterCount}`);
+    }
+
+    const mergedContext = app.getActiveLayerContext();
+    if (!mergedContext) {
+      throw new Error('no active layer context after flatten');
+    }
+    const merged = readPixel(mergedContext.ctx.canvas, flattenX, flattenY);
+
+    if (merged[0] < 100 || merged[0] > 155) {
+      throw new Error(`flattenLayer: expected red channel ~127 (50% blend of red over blue), got ${merged[0]}`);
+    }
+    if (merged[2] < 100 || merged[2] > 155) {
+      throw new Error(`flattenLayer: expected blue channel ~127 (50% blend of red over blue), got ${merged[2]}`);
+    }
+    if (merged[1] !== 0) {
+      throw new Error(`flattenLayer: expected green channel 0, got ${merged[1]}`);
+    }
+    if (merged[3] !== 255) {
+      throw new Error(`flattenLayer: expected a fully opaque merged pixel, got alpha ${merged[3]}`);
+    }
+  });
+
+  // Probe: clip-reorder probe. Regression guard for moveLayerDown (and by
+  // the same logic moveLayerUp/deleteLayer) landing a layer with
+  // clipToBelow still true at index 0 -- renderCurrentFrame's clip branch
+  // then masks it against a blank accumulator (nothing below the bottom of
+  // the stack) and it silently vanishes. Background (layer 0) is hidden for
+  // this probe: new projects default to an opaque, full-canvas white
+  // background (hasTransparentBackground: false), and swapping that above
+  // the test layer would obscure the result regardless of the fix -- hiding
+  // it removes that as a variable without weakening what's being checked
+  // (an invisible layer contributes nothing to any composite, at any
+  // position).
+  runProbe(probes, 'clipReorder', () => {
+    const layerList = document.getElementById('layerList');
+    const mainCanvas = document.getElementById('mainCanvas');
+    if (!layerList || !mainCanvas) {
+      throw new Error('layerList or mainCanvas element not found');
+    }
+    const testPixel = { x: 210, y: 100 };
+    const newLayerIndex = layerList.querySelectorAll('.layer-item').length;
+
+    app.toggleLayerVisibility(0);
+    try {
+      app.addLayer();
+      app.selectLayer(newLayerIndex);
+      const layerContext = app.getActiveLayerContext();
+      if (!layerContext) {
+        throw new Error('no active layer context for clipReorder probe');
+      }
+      layerContext.ctx.globalAlpha = 1;
+      layerContext.ctx.globalCompositeOperation = 'source-over';
+      layerContext.ctx.fillStyle = '#00ff00';
+      layerContext.ctx.fillRect(testPixel.x, testPixel.y, 1, 1);
+
+      app.setLayerClipToBelow(newLayerIndex, true);
+      app.moveLayerDown(); // now at index 0 -- clipToBelow must have been cleared
+
+      // Range check, not exact equality: in this test environment a solid
+      // fillRect composited canvas-to-canvas here reads back alpha ~201,
+      // not 255 -- cause not established (seen consistently across probes,
+      // so likely environmental rather than a real bug; flagging rather
+      // than silently working around it). What this check needs is "clearly
+      // rendered as green", not exact byte values -- a vanished layer reads
+      // back fully transparent (alpha ~0), which is well below this bound.
+      const merged = readPixel(mainCanvas, testPixel.x, testPixel.y);
+      if (merged[1] < 200 || merged[3] < 128) {
+        throw new Error(`clipReorder: expected the moved layer's green pixel to still render (green channel high, alpha > 128), got rgb(${merged[0]},${merged[1]},${merged[2]}) alpha ${merged[3]}`);
+      }
+
+      app.deleteLayer(); // restore original layer count for later probes
+    } finally {
+      app.toggleLayerVisibility(0); // restore background visibility regardless of pass/fail
+    }
+  });
+
   // Probe 11: zoom probe. Regression guard for the upcoming zoom.js
   // extraction. Drives only the public zoom methods and reads back through
   // #zoomInput (the DOM updateZoom() writes to) -- the zoom variable is

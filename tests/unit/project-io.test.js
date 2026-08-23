@@ -121,7 +121,7 @@ describe('buildProjectData / serializeProjectData round trip', () => {
     assert.equal(built.frames[0].layers[0].blendMode, 'source-over');
 
     assert.deepEqual(built.layers, [
-      { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over' }
+      { id: 0, name: 'Background', visible: true, locked: false, opacity: 1, blendMode: 'source-over', alphaLocked: false, clipToBelow: false }
     ]);
 
     assert.equal(built.metadata.author, 'WASRTK');
@@ -232,6 +232,89 @@ describe('layer opacity / blendMode', () => {
 
     const missingMode = await buildLoadedFrames({});
     assert.equal(missingMode[0].layers[0].blendMode, 'source-over');
+  });
+});
+
+describe('layer alphaLocked / clipToBelow', () => {
+  function fakeCanvas(label) {
+    return { toDataURL: (type) => `data:${type};base64,${label}` };
+  }
+
+  test('buildProjectData carries alphaLocked/clipToBelow through, defaulting when absent', () => {
+    const input = {
+      frames: [{
+        id: 0,
+        name: 'Frame 1',
+        timestamp: 111,
+        layers: [
+          { id: 0, name: 'BG', visible: true, locked: false, alphaLocked: true, clipToBelow: true, canvas: fakeCanvas('bg') },
+          { id: 1, name: 'FG', visible: true, locked: false, canvas: fakeCanvas('fg') }
+        ]
+      }],
+      layers: [
+        { id: 0, name: 'BG', visible: true, locked: false, alphaLocked: true, clipToBelow: true },
+        { id: 1, name: 'FG', visible: true, locked: false }
+      ],
+      canvas: { width: 8, height: 8 },
+      settings: {}
+    };
+
+    const built = buildProjectData(input);
+    assert.equal(built.frames[0].layers[0].alphaLocked, true);
+    assert.equal(built.frames[0].layers[0].clipToBelow, true);
+    assert.equal(built.layers[0].alphaLocked, true);
+    assert.equal(built.layers[0].clipToBelow, true);
+    // Absent on the source layer -> defaults to false, not undefined.
+    assert.equal(built.frames[0].layers[1].alphaLocked, false);
+    assert.equal(built.frames[0].layers[1].clipToBelow, false);
+    assert.equal(built.layers[1].alphaLocked, false);
+    assert.equal(built.layers[1].clipToBelow, false);
+  });
+
+  test('buildFramesFromProject defaults alphaLocked/clipToBelow to false when missing and preserves true', async () => {
+    const projectData = {
+      frames: [{
+        id: 0,
+        name: 'Frame 1',
+        timestamp: 111,
+        layers: [{ id: 0, name: 'BG', visible: true, locked: false, alphaLocked: true, clipToBelow: true }]
+      }]
+    };
+
+    const loaded = await buildFramesFromProject({
+      projectData,
+      width: 4,
+      height: 4,
+      createCanvas: () => ({ width: 4, height: 4, getContext: () => ({}) }),
+      loadImageToCanvas: async () => {},
+      applyImageSmoothing: () => {},
+      fillFallbackLayer: () => {}
+    });
+
+    assert.equal(loaded[0].layers[0].alphaLocked, true);
+    assert.equal(loaded[0].layers[0].clipToBelow, true);
+
+    const projectDataMissing = {
+      frames: [{
+        id: 0,
+        name: 'Frame 1',
+        timestamp: 111,
+        layers: [{ id: 0, name: 'BG', visible: true, locked: false }]
+      }]
+    };
+
+    const loadedMissing = await buildFramesFromProject({
+      projectData: projectDataMissing,
+      width: 4,
+      height: 4,
+      createCanvas: () => ({ width: 4, height: 4, getContext: () => ({}) }),
+      loadImageToCanvas: async () => {},
+      applyImageSmoothing: () => {},
+      fillFallbackLayer: () => {}
+    });
+
+    assert.equal(loadedMissing[0].layers[0].alphaLocked, false);
+    assert.equal(loadedMissing[0].layers[0].clipToBelow, false);
   });
 });
 

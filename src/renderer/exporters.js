@@ -20,18 +20,37 @@ function getMimeType(fileExtension) {
   return MIME_TYPES[String(fileExtension || '').toLowerCase()] || 'application/octet-stream';
 }
 
-function drawVisibleLayersToContext(targetCtx, frame) {
+// Composites a frame's visible layers onto targetCtx, in place, honoring
+// opacity, blend mode, and clipToBelow. targetCtx accumulates progressively
+// (each layer draws on top of what's already there), which is exactly what
+// clipToBelow needs to mask against: "everything composited so far".
+//
+// `createCanvas` is only required when the frame actually has a clipped
+// layer (used to allocate the scratch canvas for the destination-in mask) --
+// omit it for frames with no clipping, same as before this option existed.
+// `dimLocked` is an editor-only affordance (the 0.5 alpha shown for a locked
+// layer on the live canvas) and must stay false for exports/samples, which
+// need the true composited result, not an edit-lock indicator.
+function drawVisibleLayersToContext(targetCtx, frame, { createCanvas, dimLocked = false } = {}) {
   const layers = Array.isArray(frame?.layers) ? frame.layers : [];
 
   layers.forEach((layer) => {
-    if (layer.visible) {
-      // No locked-layer dim here -- that 0.5 alpha in the editor's render
-      // loop is an edit-lock affordance, not project data, and must not
-      // leak into exported output.
-      targetCtx.globalAlpha = layer.opacity ?? 1;
-      targetCtx.globalCompositeOperation = layer.blendMode || 'source-over';
-      targetCtx.drawImage(layer.canvas, 0, 0);
+    if (!layer.visible) return;
+
+    let sourceCanvas = layer.canvas;
+    if (layer.clipToBelow) {
+      const clipCanvas = createCanvas(targetCtx.canvas.width, targetCtx.canvas.height);
+      const clipCtx = clipCanvas.getContext('2d');
+      clipCtx.drawImage(layer.canvas, 0, 0);
+      clipCtx.globalCompositeOperation = 'destination-in';
+      clipCtx.drawImage(targetCtx.canvas, 0, 0);
+      sourceCanvas = clipCanvas;
     }
+
+    const opacity = layer.opacity ?? 1;
+    targetCtx.globalAlpha = dimLocked && layer.locked ? opacity * 0.5 : opacity;
+    targetCtx.globalCompositeOperation = layer.blendMode || 'source-over';
+    targetCtx.drawImage(sourceCanvas, 0, 0);
   });
 
   targetCtx.globalAlpha = 1;
@@ -61,7 +80,7 @@ async function saveAsPngSequence({ filePath, frames, width, height, invoke, crea
     const tempCtx = tempCanvas.getContext('2d');
     tempCtx.clearRect(0, 0, width, height);
 
-    drawVisibleLayersToContext(tempCtx, frame);
+    drawVisibleLayersToContext(tempCtx, frame, { createCanvas });
 
     const dataUrl = tempCanvas.toDataURL('image/png');
     const buffer = Buffer.from(dataUrl.split(',')[1], 'base64');
@@ -93,7 +112,7 @@ function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas,
       const tempCtx = tempCanvas.getContext('2d');
       tempCtx.clearRect(0, 0, width, height);
 
-      drawVisibleLayersToContext(tempCtx, frame);
+      drawVisibleLayersToContext(tempCtx, frame, { createCanvas });
 
       gif.addFrame(tempCanvas, { delay: frameDelayMs });
     });
@@ -129,7 +148,7 @@ function saveAsMov({ filePath, frames, width, height, fps, createCanvas, createF
         const tempCanvas = createCanvas(width, height);
         const tempCtx = tempCanvas.getContext('2d');
         tempCtx.clearRect(0, 0, width, height);
-        drawVisibleLayersToContext(tempCtx, frame);
+        drawVisibleLayersToContext(tempCtx, frame, { createCanvas });
 
         const dataUrl = tempCanvas.toDataURL('image/png');
         const buffer = Buffer.from(dataUrl.split(',')[1], 'base64');
