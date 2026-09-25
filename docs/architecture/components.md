@@ -566,10 +566,9 @@ convention as brush-engine.js and selection-geometry.js.
 ### `src/renderer/tools/`
 
 Each tool module exports an object with at least an `id`. `load-tools.js`
-scans the directory at runtime (`readdirSync`, skipping `index.js`,
-`load-tools.js`, and anything not ending in `.js` — which also skips the
-`lib/` subdirectory since it isn't a `.js` file itself) and builds the tool
-registry keyed by `id`.
+lists the tool files explicitly (so the web build's bundler can see them)
+and builds the tool registry keyed by `id`. A new tool file needs a line
+there; `tests/unit/load-tools.test.js` fails if one is missing.
 
 Current tool modules (8 tools, matching the smoke-test probe list):
 
@@ -613,10 +612,14 @@ Contains:
 - MIME type lookup for reference file loading (`getMimeType`)
 - Frame delay computation for GIF export (`getFrameDelayMs`)
 - Visible-layer compositing (`drawVisibleLayersToContext`)
-- PNG sequence export
+- PNG sequence export (every frame in one `save-files` call: numbered files on the desktop, one `.zip` on the web)
 - GIF export through vendored `gif.js`/`gif.worker.js`
   (`vendor/gif/`, packaged explicitly since asar cannot reliably run
   workers from inside the archive)
+
+MOV export (ffmpeg) is in `exporters-mov.js` and WebM export (WebCodecs + Mediabunny) in
+`exporters-webm.mjs`. `wasrtk.js` requires each on first use, so the desktop never loads Mediabunny and the
+web build never runs ffmpeg.
 
 ### `src/renderer/reference/`
 
@@ -647,6 +650,19 @@ in the constructor over the reference-related module globals
 `updateReferenceImageOnly`, `loadReferenceFromBlob`,
 `resetReferencePosition`, `clearReferenceImage`, `updateReferencePreview`)
 for the reference module's entire public surface.
+
+### `src/renderer/platform/` (web build)
+
+Browser stand-ins that let the renderer run as a static site; `scripts/build-web.mjs` aliases the Electron and
+Node modules to them. `index.js` exports `isWeb`.
+
+- `web-ipc.js`: an `ipcRenderer` answering the main process's channels: settings in `localStorage` (through the
+  `src/main/*-config.js` sanitizers), picked files for reads, downloads for saves (`zip.js` for PNG sequences),
+  popup windows for the theme and palette editors, and `BroadcastChannel` for config updates between windows
+- `web-menu.js`: the in-page menu bar, its shortcuts, file pickers, Save Animation and Restore Backup dialogs,
+  crash recovery and the unsaved-changes warning
+- `web-autosave.js`: autosaves in IndexedDB (keep 8, newest first) and the clean-exit stamp
+- `web-path.js`, `empty.js`: `path` for the browser, and an empty module for `fs`/`os`/ffmpeg
 
 ### Theme components
 

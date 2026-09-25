@@ -78,6 +78,7 @@ function savePaletteConfig(palettes) {
 }
 
 module.exports = {
+  sanitizePalettes,
   loadPaletteConfig,
   savePaletteConfig
 };

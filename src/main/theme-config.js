@@ -62,6 +62,7 @@ function resetThemeConfig() {
 
 module.exports = {
   DEFAULT_THEME,
+  sanitizeTheme,
   loadThemeConfig,
   saveThemeConfig,
   resetThemeConfig

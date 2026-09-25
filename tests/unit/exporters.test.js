@@ -1,9 +1,9 @@
 'use strict';
 
-// Unit tests for src/renderer/exporters.js.
+// Unit tests for src/renderer/exporters.js and exporters-mov.js.
 //
-// exporters.js only requires built-in/plain-Node modules ('path', 'fs',
-// 'os', 'fluent-ffmpeg') at the top level -- it does NOT require('electron'),
+// Neither requires('electron') -- exporters.js needs only 'path', and
+// exporters-mov.js plain-Node modules ('fs', 'os', 'fluent-ffmpeg') --
 // so no stub/loader is needed to require it directly under node:test. All
 // Electron-shaped dependencies (ipcRenderer.invoke, the GIF constructor,
 // canvas creation) and the real ffmpeg command builder are passed in as
@@ -18,8 +18,10 @@ const {
   getFrameDelayMs,
   drawVisibleLayersToContext,
   saveAsGif,
-  saveAsMov
+  saveAsPngSequence,
+  dataUrlToBytes
 } = require('../../src/renderer/exporters');
+const { saveAsMov } = require('../../src/renderer/exporters-mov');
 
 describe('getMimeType', () => {
   test('resolves known extensions', () => {
@@ -249,7 +251,7 @@ describe('saveAsGif', () => {
     }));
   }
 
-  test('resolves once invoke succeeds, forwarding a Buffer and the filePath', async () => {
+  test('resolves once invoke succeeds, forwarding the bytes and the filePath', async () => {
     const invokeCalls = [];
     const invoke = async (channel, payload) => {
       invokeCalls.push({ channel, payload });
@@ -270,7 +272,7 @@ describe('saveAsGif', () => {
     assert.equal(invokeCalls.length, 1);
     assert.equal(invokeCalls[0].channel, 'save-file');
     assert.equal(invokeCalls[0].payload.filePath, '/tmp/out.gif');
-    assert.ok(Buffer.isBuffer(invokeCalls[0].payload.data));
+    assert.deepEqual(invokeCalls[0].payload.data, Uint8Array.from([1, 2, 3, 4]));
   });
 
   test('adds one GIF frame per input frame, using only visible layers', async () => {
@@ -386,6 +388,39 @@ describe('saveAsGif', () => {
 
     assert.equal(FakeGIF.lastInstance.options.width, 42);
     assert.equal(FakeGIF.lastInstance.options.height, 24);
+  });
+});
+
+describe('saveAsPngSequence', () => {
+  test('sends every frame in one save-files call, numbered next to the chosen path', async () => {
+    const calls = [];
+    const png = `data:image/png;base64,${Buffer.from('png!').toString('base64')}`;
+    await saveAsPngSequence({
+      filePath: '/tmp/walk.png',
+      frames: [{ layers: [] }, { layers: [] }],
+      width: 4,
+      height: 4,
+      invoke: async (channel, payload) => { calls.push({ channel, payload }); return { success: true }; },
+      createCanvas: () => ({ getContext: () => ({ clearRect() {} }), toDataURL: () => png })
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].channel, 'save-files');
+    assert.equal(calls[0].payload.zipName, 'walk.zip');
+    assert.deepEqual(calls[0].payload.files.map((f) => f.filePath), ['/tmp/walk-0001.png', '/tmp/walk-0002.png']);
+    assert.deepEqual(calls[0].payload.files[0].data, dataUrlToBytes(png));
+    assert.equal(new TextDecoder().decode(calls[0].payload.files[0].data), 'png!');
+  });
+
+  test('rejects when saving fails', async () => {
+    await assert.rejects(saveAsPngSequence({
+      filePath: '/tmp/walk.png',
+      frames: [{ layers: [] }],
+      width: 1,
+      height: 1,
+      invoke: async () => ({ success: false, error: 'disk full' }),
+      createCanvas: () => ({ getContext: () => ({ clearRect() {} }), toDataURL: () => 'data:image/png;base64,' })
+    }), /disk full/);
   });
 });
 

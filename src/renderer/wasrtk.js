@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
-const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, saveAsMov, drawVisibleLayersToContext } = require('./exporters');
+const { getMimeType: resolveMimeType, saveAsPngSequence, saveAsGif, drawVisibleLayersToContext } = require('./exporters');
 const { parseProjectJson, validateProjectData, buildProjectData, serializeProjectData, buildFramesFromProject, normalizeProjectSettings, normalizeLayerTypeFields } = require('./project-io');
 const { clampNumber } = require('./math-utils');
 const { BLEND_MODES } = require('./constants');
@@ -23,6 +23,7 @@ const { createCanvasEngine } = require('./canvas-engine');
 const { createBrushSettings } = require('./brush-settings');
 const { createActionRegistry, resolveShortcuts } = require('./shortcuts');
 const { createCommandPalette, createShortcutsPanel } = require('./shortcuts-ui');
+const { isWeb } = require('./platform');
 
 // Global variables
 let currentTool = 'pen';
@@ -1404,10 +1405,13 @@ class WASRTK {
                 case '.mov':
                     await this.saveAsMov(targetPath);
                     break;
+                case '.webm':
+                    await this.saveAsWebm(targetPath);
+                    break;
                 default:
                     throw new Error(`Unsupported file format: ${fileExtension}`);
             }
-            alert(`File saved successfully to ${targetPath}`);
+            if (!isWeb) alert(`File saved successfully to ${targetPath}`); // the web build's browser shows the download itself
         } catch (error) {
             console.error('Failed to save animation:', error);
             alert(`Error saving file: ${error.message}`);
@@ -1536,13 +1540,29 @@ class WASRTK {
         });
     }
 
+    // Desktop only: loads ffmpeg on first use. The web build has no ffmpeg and exports WebM instead.
     async saveAsMov(filePath) {
+        const { saveAsMov } = require('./exporters-mov');
         return saveAsMov({
             filePath,
             frames,
             width: mainCanvas.width,
             height: mainCanvas.height,
             fps,
+            createCanvas
+        });
+    }
+
+    // Web only (WebCodecs); loaded on first use.
+    async saveAsWebm(filePath) {
+        const { saveAsWebm } = require('./exporters-webm.mjs');
+        return saveAsWebm({
+            filePath,
+            frames,
+            width: mainCanvas.width,
+            height: mainCanvas.height,
+            fps,
+            invoke: ipcRenderer.invoke.bind(ipcRenderer),
             createCanvas
         });
     }

@@ -2,6 +2,8 @@
 
 WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, and rotoscoping with reference images or live screen capture.
 
+**Try it in the browser: https://graphicmismatch.github.io/WASRTK/** (see [Web version](#web-version) for how it differs).
+
 ## Current feature set
 
 - Eight drawing tools: pen, line, rectangle, circle, fill, eraser, eyedropper, and selection
@@ -10,7 +12,7 @@ WASRTK is an Electron desktop app for frame-by-frame drawing, simple animation, 
 - Onion skinning with configurable range
 - Reference images from files or desktop/window capture
 - Project save/load in `.wasrtk`
-- Export to PNG sequences or animated GIF
+- Export to PNG sequences, animated GIF, or video (MOV on the desktop, WebM in the browser)
 - Multiple palette presets with quick swatch switching
 - Palette creation/import workflows via dedicated Palette Editor window (image extraction + Lospec formats excluding Paint.NET/Photoshop)
 - Eyedropper tool with zoomed color-pick preview lens
@@ -127,6 +129,24 @@ The repo currently ships Electron `13.1.7`. GIF export uses a vendored copy of `
 - `npm run build` creates packaged output with `electron-builder`
 - `npm run build:win`, `npm run build:mac`, `npm run build:linux` build platform-specific bundles
 
+- `npm run build:web` builds the static web version into `web-build/`; `npm run serve:web` builds it and serves it on http://localhost:8080
+
+## Web version
+
+The same renderer code also runs as a static site, published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main`. `scripts/build-web.mjs` bundles it with esbuild and swaps the Electron and Node pieces for browser stand-ins in `src/renderer/platform/`:
+
+| Desktop | Web |
+|---|---|
+| Native menu (`src/main/menu.js`) | In-page menu bar with the same actions and shortcuts (`web-menu.js`). Ctrl+N and Ctrl+R stay with the browser, so New Project and Reset Reference are menu-only. |
+| Settings as JSON files in the user data folder | `localStorage`, validated by the same sanitizers (`web-ipc.js`) |
+| Autosaves and crash recovery on disk | IndexedDB, with the same keep-8 rule and restore prompt (`web-autosave.js`) |
+| Native open/save dialogs | File picker to open; saving downloads the file. A PNG sequence downloads as one `.zip`. |
+| MOV export through ffmpeg | WebM export through WebCodecs (Chrome, Edge, Firefox 130+, Safari 16.4+) |
+| Screen/window capture through Electron's source list | The browser's own screen-share picker |
+| Theme and palette editor windows | Popup windows, kept in sync with the editor through `BroadcastChannel` |
+
+Your work in the web version stays in that browser. Save projects (`.wasrtk`) to keep them, and they open in either version.
+
 ## Documentation
 
 - [Quick Start](./QUICKSTART.md)
@@ -148,6 +168,7 @@ The repo currently ships Electron `13.1.7`. GIF export uses a vendored copy of `
 - `index.html` and `styles.css` define the main UI
 - `theme-window.html`/`theme-window.js` and `palette-window.html`/`palette-window.js` provide the theme and palette editor windows
 - `vendor/gif/` vendors the GIF export library so packaged builds work without `node_modules`
+- `src/renderer/platform/` holds the web build's stand-ins for Electron and Node (see [Web version](#web-version)); `scripts/build-web.mjs` builds it
 
 See [Component Architecture](./docs/architecture/components.md) for the full file-by-file breakdown.
 

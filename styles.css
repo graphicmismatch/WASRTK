@@ -1636,3 +1636,97 @@ select:focus {
     opacity: 0.5;
     cursor: not-allowed;
 } 
+
+/* Web build only: the in-page menu bar standing in for the desktop app's native menu (src/renderer/platform/web-menu.js). */
+body.has-web-menu #app {
+    height: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.web-menubar {
+    display: flex;
+    gap: 2px;
+    padding: 2px 8px;
+    background-color: var(--bg-dark);
+    border-bottom: 1px solid var(--bg-med);
+    font-size: 13px;
+    position: relative;
+    z-index: 1100;
+}
+
+.web-menu {
+    position: relative;
+}
+
+.web-menu-title {
+    background: none;
+    border: 0;
+    color: var(--text-light);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.web-menu-title:hover,
+.web-menu.open > .web-menu-title {
+    background-color: var(--bg-med);
+}
+
+.web-menu-items {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 240px;
+    padding: 4px 0;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--bg-med);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.web-menu.open > .web-menu-items {
+    display: block;
+}
+
+.web-menu-items button {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    width: 100%;
+    padding: 6px 12px;
+    background: none;
+    border: 0;
+    color: var(--text-light);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.web-menu-items button:hover,
+.web-menu-items button:focus-visible {
+    background-color: var(--bg-med);
+    outline: none;
+}
+
+.web-menu-items kbd {
+    color: var(--text-muted);
+    font-family: inherit;
+}
+
+.web-menu-items hr {
+    border: 0;
+    border-top: 1px solid var(--bg-med);
+    margin: 4px 0;
+}
+
+.web-backups {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 12px 0;
+    max-height: 50vh;
+    overflow: auto;
+}

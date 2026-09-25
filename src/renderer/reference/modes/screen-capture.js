@@ -1,5 +1,6 @@
 const { ipcRenderer } = require('electron');
 const { setReferenceToggleIcon } = require('../settings');
+const { isWeb } = require('../../platform');
 
 function startScreenShare(app, api) {
   if (app.screenCaptureInterval) {
@@ -7,6 +8,11 @@ function startScreenShare(app, api) {
     app.clearReferenceImage();
   } else if (api.getImage()) {
     app.clearReferenceImage();
+  }
+
+  if (isWeb) {
+    startBrowserScreenShare(app);
+    return;
   }
 
   ipcRenderer.invoke('get-screen-sources').then((sources) => {
@@ -18,6 +24,24 @@ function startScreenShare(app, api) {
   }).catch((err) => {
     console.error('Error getting screen sources:', err);
     tryFallbackScreenCapture(app);
+  });
+}
+
+// The web build: the browser's own screen/window/tab picker stands in for Electron's source list and modal.
+function startBrowserScreenShare(app) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    alert('Screen capture is not supported in this browser.');
+    return;
+  }
+  navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }).then((stream) => {
+    const [track] = stream.getVideoTracks();
+    // Stopping from the browser's "Stop sharing" bar ends the track; stop the reference feed with it.
+    track.addEventListener('ended', () => stopScreenShare(app));
+    setupScreenShareStream(app, stream, track.label || 'Screen');
+  }).catch((err) => {
+    if (err && err.name === 'NotAllowedError') return; // the user closed the picker
+    console.error('Error accessing screen:', err);
+    alert('Screen capture failed. Please try again.');
   });
 }
 
@@ -61,6 +85,7 @@ function tryAlternativeScreenCapture(app, source) {
 }
 
 function setupScreenShareStream(app, stream, sourceName) {
+  app.screenCaptureStream = stream;
   const video = document.createElement('video'); video.srcObject = stream; video.autoplay = true; video.muted = true;
   const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
   video.onloadedmetadata = () => { canvas.width = video.videoWidth; canvas.height = video.videoHeight; startFrameCapture(app, video, canvas, ctx, sourceName); };
@@ -96,6 +121,11 @@ function stopScreenShare(app) {
   if (app.screenCaptureInterval) {
     clearInterval(app.screenCaptureInterval);
     app.screenCaptureInterval = null;
+  }
+  // Release the capture itself too, or it keeps running (and a browser keeps showing "sharing your screen").
+  if (app.screenCaptureStream) {
+    app.screenCaptureStream.getTracks().forEach((track) => track.stop());
+    app.screenCaptureStream = null;
   }
   document.getElementById('screenShareBtn').innerHTML = '<i class="fas fa-desktop"></i>';
   document.getElementById('screenShareBtn').title = 'Share Screen/Window';

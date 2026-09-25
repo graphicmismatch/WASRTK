@@ -49,3 +49,5 @@ temp/
 
 # CodeGraph local index
 .codegraph/ 
+# Static web build (npm run build:web)
+web-build/

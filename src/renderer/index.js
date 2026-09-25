@@ -2,6 +2,7 @@ const { ipcRenderer } = require('electron');
 const { WASRTK } = require('./wasrtk');
 const { initializeThemeSync } = require('./theme');
 const { makeFloatingPanelDraggable, makeFloatingPanelResizable } = require('./floating-panel');
+const { isWeb } = require('./platform');
 
 const FLOATING_PANEL_IDS = ['toolsPanel', 'colorPanel', 'historyPanel'];
 
@@ -9,8 +10,10 @@ function bootstrap() {
   // process.argv in the renderer reflects Chromium's own subprocess command
   // line, not the flags passed to `electron .` -- main.js forwards the
   // --smoke flag via this env var instead (env vars ARE inherited by the
-  // renderer subprocess).
-  const isSmoke = process.env.WASRTK_SMOKE === '1';
+  // renderer subprocess). The web build takes it as ?smoke in the URL.
+  const isSmoke = isWeb
+    ? new URLSearchParams(window.location.search).has('smoke')
+    : process.env.WASRTK_SMOKE === '1';
   const smokeErrors = [];
 
   if (isSmoke) {
@@ -25,6 +28,7 @@ function bootstrap() {
 
   document.addEventListener('DOMContentLoaded', async () => {
     const app = new WASRTK();
+    window.wasrtkApp = app; // the web menu's unsaved-changes check, and handy in devtools
     await initializeThemeSync();
 
     const { overrides } = await ipcRenderer.invoke('load-shortcuts-config');
@@ -68,6 +72,13 @@ function bootstrap() {
     });
 
     app.updateHistoryPanel();
+
+    if (isWeb) {
+      // The desktop's native menu, dialogs and crash recovery, done in the page. Not under smoke: the recovery
+      // prompt would block it.
+      const webMenu = require('./platform/web-menu');
+      if (!isSmoke) await webMenu.install();
+    }
 
     if (isSmoke) {
       // Kept in its own file so index.js stays tiny; only required under

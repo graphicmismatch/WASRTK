@@ -51,6 +51,7 @@ function saveShortcutsConfig(overrides) {
 }
 
 module.exports = {
+  sanitizeOverrides,
   loadShortcutsConfig,
   saveShortcutsConfig
 };

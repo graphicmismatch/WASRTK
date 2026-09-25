@@ -1,14 +1,9 @@
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const ffmpeg = require('fluent-ffmpeg');
 const { computeGroupMembership, getEffectiveVisibility, getEffectiveLocked } = require('./layer-groups');
 const { applyAdjustment } = require('./adjustment-layers');
 
-// ffmpeg-static's binary can't execute from inside an asar archive;
-// electron-builder unpacks it to a sibling ".unpacked" directory in packaged
-// builds, so the path needs the same substitution at runtime.
-ffmpeg.setFfmpegPath(require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked'));
+// MOV export (ffmpeg, desktop only) lives in exporters-mov.js and WebM (WebCodecs, web only) in
+// exporters-webm.js, so this file loads in both the Electron renderer and the web build.
 
 const MIME_TYPES = {
   '.png': 'image/png',
@@ -90,28 +85,37 @@ function getFrameDelayMs(fps) {
   return Math.max(1, Math.round(1000 / parsedFps));
 }
 
+// A data: URL's payload as bytes. Plain Uint8Array (not Node's Buffer) so it works in the browser build too;
+// Electron's IPC and fs.writeFileSync take it as-is.
+function dataUrlToBytes(dataUrl) {
+  const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// All frames go over in one 'save-files' call: the desktop writes <name>-0001.png... next to filePath, the
+// web build downloads them as one <name>.zip.
 async function saveAsPngSequence({ filePath, frames, width, height, invoke, createCanvas }) {
   const dir = path.dirname(filePath);
   const baseName = path.basename(filePath, path.extname(filePath));
 
-  for (let i = 0; i < frames.length; i++) {
-    const frame = frames[i];
+  const files = frames.map((frame, i) => {
     const frameNumber = (i + 1).toString().padStart(4, '0');
-    const framePath = path.join(dir, `${baseName}-${frameNumber}.png`);
-
     const tempCanvas = createCanvas(width, height);
     const tempCtx = tempCanvas.getContext('2d');
     tempCtx.clearRect(0, 0, width, height);
 
     drawVisibleLayersToContext(tempCtx, frame, { createCanvas });
 
-    const dataUrl = tempCanvas.toDataURL('image/png');
-    const buffer = Buffer.from(dataUrl.split(',')[1], 'base64');
+    return { filePath: path.join(dir, `${baseName}-${frameNumber}.png`), data: dataUrlToBytes(tempCanvas.toDataURL('image/png')) };
+  });
 
-    const result = await invoke('save-file', { filePath: framePath, data: buffer });
-    if (!result.success) {
-      throw new Error(result.error || `Failed to save frame ${frameNumber}.`);
-    }
+  const result = await invoke('save-files', { zipName: `${baseName}.zip`, files });
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to save the PNG sequence.');
   }
 }
 
@@ -142,9 +146,8 @@ function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas,
 
     gif.on('finished', async (blob) => {
       try {
-        const arrayBuffer = await blob.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const result = await invoke('save-file', { filePath, data: buffer });
+        const data = new Uint8Array(await blob.arrayBuffer());
+        const result = await invoke('save-file', { filePath, data });
 
         if (!result.success) {
           reject(new Error(result.error || 'Failed to save GIF file.'));
@@ -161,57 +164,11 @@ function saveAsGif({ filePath, frames, width, height, fps, invoke, createCanvas,
   });
 }
 
-function saveAsMov({ filePath, frames, width, height, fps, createCanvas, createFfmpegCommand = ffmpeg }) {
-  return new Promise((resolve, reject) => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wasrtk-mov-'));
-    const cleanup = () => fs.rmSync(tempDir, { recursive: true, force: true });
-
-    try {
-      frames.forEach((frame, index) => {
-        const tempCanvas = createCanvas(width, height);
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.clearRect(0, 0, width, height);
-        drawVisibleLayersToContext(tempCtx, frame, { createCanvas });
-
-        const dataUrl = tempCanvas.toDataURL('image/png');
-        const buffer = Buffer.from(dataUrl.split(',')[1], 'base64');
-        const frameNumber = (index + 1).toString().padStart(4, '0');
-        fs.writeFileSync(path.join(tempDir, `frame-${frameNumber}.png`), buffer);
-      });
-    } catch (error) {
-      cleanup();
-      reject(error);
-      return;
-    }
-
-    const parsedFps = Number(fps);
-    const frameRate = Number.isFinite(parsedFps) && parsedFps > 0 ? parsedFps : 10;
-
-    createFfmpegCommand()
-      .input(path.join(tempDir, 'frame-%04d.png'))
-      .inputFPS(frameRate)
-      // H.264 requires even dimensions; odd canvas sizes are common for pixel art.
-      .videoFilters('scale=trunc(iw/2)*2:trunc(ih/2)*2')
-      .videoCodec('libx264')
-      .outputOptions(['-pix_fmt yuv420p'])
-      .output(filePath)
-      .on('end', () => {
-        cleanup();
-        resolve();
-      })
-      .on('error', (error) => {
-        cleanup();
-        reject(error);
-      })
-      .run();
-  });
-}
-
 module.exports = {
   getMimeType,
   getFrameDelayMs,
   saveAsPngSequence,
   saveAsGif,
-  saveAsMov,
+  dataUrlToBytes,
   drawVisibleLayersToContext
 };

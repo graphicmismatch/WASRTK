@@ -310,6 +310,9 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
   // user drag does, saves a project to a scratch file via the app's own
   // public saveProject method, then reads back settings.fps.
   await runAsyncProbe(probes, 'fps', async () => {
+    if (typeof fs.readFileSync !== 'function') {
+      return; // web build: no file system to read the saved project back from
+    }
     const fpsSlider = document.getElementById('fpsSlider');
     if (!fpsSlider) {
       throw new Error('fpsSlider element not found');
@@ -1101,6 +1104,30 @@ async function runSmokeChecks(app, { errors = [] } = {}) {
     }
     if (app.getIsDirty()) {
       throw new Error('performAutosave succeeded but left the dirty flag set');
+    }
+  });
+
+  // Probe: exports. Desktop only (the web build downloads instead; it has no file system to check). Writes a
+  // PNG sequence (every frame in one 'save-files' call) and a MOV (exporters-mov.js, loaded on first use) to a
+  // scratch folder and checks the files landed.
+  await runAsyncProbe(probes, 'exports', async () => {
+    if (typeof fs.mkdtempSync !== 'function') {
+      return;
+    }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wasrtk-smoke-export-'));
+    try {
+      await app.saveAsPngSequence(path.join(dir, 'seq.png'));
+      const frames = fs.readdirSync(dir).filter((name) => /^seq-\d{4}\.png$/.test(name));
+      const frameCount = document.querySelectorAll('.frame-item').length;
+      if (frames.length !== frameCount) {
+        throw new Error(`expected ${frameCount} PNG frames (one per timeline frame), found ${frames.length}`);
+      }
+      await app.saveAsMov(path.join(dir, 'out.mov'));
+      if (!(fs.statSync(path.join(dir, 'out.mov')).size > 0)) {
+        throw new Error('MOV export wrote an empty file');
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 

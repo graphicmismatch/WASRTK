@@ -89,6 +89,16 @@ function registerFileHandlers({ onThemeUpdated, onPalettesUpdated, onOpenPalette
     return { success: true, path: filePath };
   });
 
+  // A PNG sequence: every frame in one call. (The web build zips them instead; zipName is only for it.)
+  handleWithEnvelope('save-files', async (event, { files } = {}) => {
+    if (!Array.isArray(files) || !files.every((file) => hasValidFilePath(file && file.filePath))) {
+      return { success: false, error: 'Invalid file path.' };
+    }
+
+    files.forEach(({ filePath, data }) => fs.writeFileSync(filePath, data));
+    return { success: true, count: files.length };
+  });
+
   handleWithEnvelope('read-file', async (event, filePath) => {
     if (!hasValidFilePath(filePath)) {
       return { success: false, error: 'Invalid file path.' };

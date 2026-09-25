@@ -1,14 +1,18 @@
-const fs = require('fs');
-const path = require('path');
+// Every tool module, listed explicitly rather than read from this folder at runtime, so a bundler (the web
+// build) can see them. A new tool file needs a line here.
+const TOOL_MODULES = {
+  'circle.js': require('./circle'),
+  'eraser.js': require('./eraser'),
+  'eyedropper.js': require('./eyedropper'),
+  'fill.js': require('./fill'),
+  'line.js': require('./line'),
+  'pen.js': require('./pen'),
+  'rectangle.js': require('./rectangle'),
+  'selection.js': require('./selection')
+};
 
 function loadTools() {
-  const toolsDir = __dirname;
-  const toolFiles = fs
-    .readdirSync(toolsDir)
-    .filter((file) => file.endsWith('.js') && file !== 'index.js' && file !== 'load-tools.js');
-
-  return toolFiles.reduce((registry, file) => {
-    const tool = require(path.join(toolsDir, file));
+  return Object.entries(TOOL_MODULES).reduce((registry, [file, tool]) => {
     if (!tool || !tool.id) {
       throw new Error(`Tool file ${file} must export an object with an id.`);
     }

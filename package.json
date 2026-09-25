@@ -8,6 +8,8 @@
     "dev": "electron . --dev",
     "test": "node --test tests/unit/*.test.js",
     "smoke": "electron . --smoke --no-sandbox",
+    "build:web": "node scripts/build-web.mjs",
+    "serve:web": "npm run build:web && python3 -m http.server 8080 --directory web-build",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
@@ -24,7 +26,9 @@
   "license": "GPL-3.0-or-later",
   "devDependencies": {
     "electron": "^13.1.7",
-    "electron-builder": "^22.11.7"
+    "electron-builder": "^22.11.7",
+    "esbuild": "^0.28.2",
+    "mediabunny": "^1.60.0"
   },
   "build": {
     "appId": "com.wasrtk.app",
